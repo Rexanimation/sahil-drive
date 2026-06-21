@@ -32,6 +32,9 @@ self.addEventListener('activate', (event) => {
 
 // Cache first with network fallback for assets, and network first for API requests
 self.addEventListener('fetch', (event) => {
+  if (!event.request.url.startsWith('http')) {
+    return;
+  }
   const url = new URL(event.request.url);
 
   // API requests should be network-first to avoid stale responses on Render
