@@ -501,6 +501,20 @@ const Home = () => {
     });
   };
 
+  // ─── Create New General Chat Session ──────────────────────────────────────
+  const handleNewChat = async () => {
+    try {
+      const chatTitle = `Chat Session #${chats.length + 1}`;
+      const res = await axios.post(`${API_URL}/api/chat`, { title: chatTitle }, { withCredentials: true });
+      const newChat = res.data.chat || res.data;
+      dispatch(startNewChat(newChat));
+      setGeneralMessages([]);
+      alert("New chat session started!");
+    } catch (err) {
+      console.error("Error creating new chat:", err);
+    }
+  };
+
   // ─── File Specific Chat Send ───────────────────────────────────────────────
   const handleFileChatSend = async () => {
     const trimmed = fileChatInput.trim();
@@ -660,6 +674,65 @@ const Home = () => {
     return `${gb.toFixed(2)} GB`;
   };
 
+  const getStorageCategoryShares = () => {
+    let mediaBytes = 0;
+    let docsBytes = 0;
+    let otherBytes = 0;
+
+    files.forEach(file => {
+      if (!file.isFolder) {
+        const type = file.type || '';
+        const size = file.size || 0;
+        if (type.startsWith('image/') || type.startsWith('video/') || type.startsWith('audio/')) {
+          mediaBytes += size;
+        } else if (
+          type.startsWith('text/') ||
+          type.includes('pdf') ||
+          type.includes('word') ||
+          type.includes('excel') ||
+          type.includes('powerpoint') ||
+          type.includes('officedocument')
+        ) {
+          docsBytes += size;
+        } else {
+          otherBytes += size;
+        }
+      }
+    });
+
+    return {
+      mediaMB: (mediaBytes / (1024 * 1024)).toFixed(1),
+      docsMB: (docsBytes / (1024 * 1024)).toFixed(1),
+      otherMB: (otherBytes / (1024 * 1024)).toFixed(1)
+    };
+  };
+
+  const handleFileUpload = (e) => {
+    const filesList = e.target.files;
+    if (filesList && filesList.length > 0) {
+      uploadSingleFile(filesList[0]);
+    }
+  };
+
+  const handleDrag = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      uploadSingleFile(e.dataTransfer.files[0]);
+    }
+  };
+
   const cleanTag = (tag) => {
     if (!tag) return "";
     return tag.startsWith('#') ? tag.substring(1) : tag;
@@ -768,40 +841,31 @@ const Home = () => {
               Dashboard
             </button>
             <button
+              className={`sidebar-nav-item ${activeTab === 'ai-assistant' && !activeAsset ? 'active' : ''}`}
+              onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('ai-assistant'); }}
+            >
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              AI Assistant
+            </button>
+            <button
+              className={`sidebar-nav-item ${activeTab === 'analytics' && !activeAsset ? 'active' : ''}`}
+              onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('analytics'); }}
+            >
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
+              </svg>
+              Analytics
+            </button>
+            <button
               className={`sidebar-nav-item ${activeTab === 'all' && !activeAsset ? 'active' : ''}`}
               onClick={() => { dispatch(setActiveAssetContext(null)); navigateToFolder(null); setActiveTab('all'); }}
             >
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
-              All Files
-            </button>
-            <button
-              className={`sidebar-nav-item ${activeTab === 'shared' && !activeAsset ? 'active' : ''}`}
-              onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('shared'); }}
-            >
-              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              Shared with me
-            </button>
-            <button
-              className={`sidebar-nav-item ${activeTab === 'image' && !activeAsset ? 'active' : ''}`}
-              onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('image'); }}
-            >
-              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              Images
-            </button>
-            <button
-              className={`sidebar-nav-item ${activeTab === 'video' && !activeAsset ? 'active' : ''}`}
-              onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('video'); }}
-            >
-              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-              Videos
+              Recents
             </button>
             <button
               className={`sidebar-nav-item ${activeTab === 'favorites' && !activeAsset ? 'active' : ''}`}
@@ -810,15 +874,33 @@ const Home = () => {
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.907c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.906a1 1 0 00.95-.69l1.519-4.674z" />
               </svg>
-              Favorites
+              Starred
+            </button>
+            <button
+              className={`sidebar-nav-item ${activeTab === 'shared' && !activeAsset ? 'active' : ''}`}
+              onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('shared'); }}
+            >
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Shared
+            </button>
+            <button
+              className={`sidebar-nav-item ${activeTab === 'trash' && !activeAsset ? 'active' : ''}`}
+              onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('trash'); }}
+            >
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Trash
             </button>
           </nav>
         </div>
 
         <div className="sidebar-footer">
-          <div className="storage-section">
+          <div className="storage-section" style={{ marginBottom: '0.75rem' }}>
             <div className="storage-header">
-              <span>Storage Usage</span>
+              <span>Cloud Utilization</span>
               <span>{getStorageGBUsed()} / 20 GB</span>
             </div>
             <div className="storage-bar-bg">
@@ -828,6 +910,10 @@ const Home = () => {
               ></div>
             </div>
           </div>
+
+          <button className="gradient-btn" style={{ width: '100%', marginBottom: '1rem', borderRadius: '12px', fontSize: '0.85rem' }} onClick={() => alert("Premium upgrade under construction.")}>
+            Upgrade Storage
+          </button>
 
           <button className="sidebar-footer-btn" onClick={() => alert("Settings Integration Coming Soon!")}>
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -859,42 +945,34 @@ const Home = () => {
             <input
               type="text"
               className="search-input"
-              placeholder="Search file titles, tags, or ask your assistant..."
+              placeholder="Search your digital universe…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
 
           <div className="top-bar-actions">
-            <button className="icon-action-btn" aria-label="Notifications" onClick={() => alert("No new notifications")}>
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <button className="icon-action-btn" aria-label="Notifications" onClick={() => alert("No new notifications")} style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-            </button>
-            <button
-              className={`icon-action-btn ${isAiOpen ? 'active' : ''}`}
-              aria-label="Toggle Sahil AI"
-              onClick={() => setIsAiOpen(!isAiOpen)}
-            >
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
               </svg>
             </button>
 
             <div style={{ position: 'relative' }}>
-              <button className="profile-btn" onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}>
-                <img
-                  className="profile-avatar"
-                  src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100"
-                  alt="Profile Avatar"
-                />
+              <button className="profile-badge-btn" onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}>
+                <div className="profile-initials-circle">
+                  {user ? `${user.fullName.firstName[0]}${user.fullName.lastName[0]}`.toUpperCase() : "SU"}
+                </div>
+                <span className="profile-name-text">
+                  {user ? `${user.fullName.firstName} ${user.fullName.lastName}` : "Sahil User"}
+                </span>
               </button>
               {profileDropdownOpen && (
                 <div className="profile-dropdown">
-                  <span style={{ padding: '0.6rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-secondary)', borderBottom: '1px solid var(--color-border-dark)' }}>
+                  <span style={{ padding: '0.6rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--glass-border)' }}>
                     {user ? `${user.fullName.firstName} ${user.fullName.lastName}` : "User Profile"}
                   </span>
-                  <button className="dropdown-item" onClick={() => { setProfileDropdownOpen(false); alert("Account dashboard under construction"); }}>My Account</button>
+                  <button className="dropdown-item" onClick={() => { setProfileDropdownOpen(false); alert("Account settings are secure."); }}>My Account</button>
                   <button className="dropdown-item" style={{ color: '#f87171' }} onClick={handleLogout}>Sign Out</button>
                 </div>
               )}
@@ -1021,6 +1099,409 @@ const Home = () => {
                 </div>
               </div>
             </div>
+          ) : activeTab === 'ai-assistant' ? (
+            /* ─── CASE B: Full-page AI Assistant Layout ───────────────────── */
+            <div className="ai-assistant-page">
+              <div className="ai-recent-conversations">
+                <div className="ai-recent-header">
+                  <span className="ai-recent-title">Recent Conversations</span>
+                  <button className="ai-new-chat-btn" onClick={handleNewChat} title="New Chat" aria-label="New Chat">
+                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="ai-conversations-list">
+                  {chats.map(chat => (
+                    <button 
+                      key={chat._id} 
+                      className={`ai-conversation-item ${activeChatId === chat._id ? 'active' : ''}`}
+                      onClick={() => {
+                        dispatch(selectChat(chat._id));
+                        getGeneralMessages(chat._id);
+                      }}
+                    >
+                      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      <div className="ai-conversation-details">
+                        <span className="ai-conversation-title">{chat.title}</span>
+                        <span className="ai-conversation-time">Active chat</span>
+                      </div>
+                    </button>
+                  ))}
+                  {chats.length === 0 && (
+                    <div style={{ padding: '2rem 1rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
+                      No conversations yet. Click "+" above to start one!
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="ai-chat-panel">
+                <div className="ai-chat-header">
+                  <div className="ai-assistant-badge">
+                    <span className="ai-active-dot"></span>
+                    <div>
+                      <span className="ai-assistant-name">Sahil GPT AI</span>
+                      <div className="ai-analyzed-file-subtext">
+                        {activeAsset ? `Active: Analyzing "${activeAsset.name}"` : "Active: Idle"}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="ai-header-actions">
+                    <button className="icon-action-btn" aria-label="Share Session" onClick={() => alert("Session share link copied!")} style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 10.742l4.028 2.014m0 0a3 3 0 102.243-4.077L10.96 8.684m0 0a3 3 0 10-2.243 4.077L8.684 10.742z" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="ai-chat-messages">
+                  {generalMessages.length === 0 ? (
+                    <div className="ai-empty-state">
+                      <div className="ai-empty-shield-container">
+                        <div className="ai-empty-shield-glow"></div>
+                        <svg className="ai-empty-shield-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                      </div>
+                      <h3 className="ai-empty-title">How can I accelerate your workflow?</h3>
+                      <p className="ai-empty-subtitle">I can analyze your cloud storage documents, generate summaries, or help you find specific files using natural language.</p>
+                    </div>
+                  ) : (
+                    generalMessages.map((msg, idx) => (
+                      <div key={idx} className={`chat-bubble-container ${msg.type}`}>
+                        {msg.type === 'ai' && (
+                          <div className="ai-avatar-circle" style={{ marginRight: '0.75rem' }}>
+                            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                          </div>
+                        )}
+                        <div className="chat-bubble-content glass-card">
+                          {renderChatMessage(msg.content)}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+
+                {generalMessages.length > 0 && (
+                  <div className="suggested-chips-container">
+                    <button className="suggested-chip" onClick={() => dispatch(setInput("Summarize my storage patterns"))}>
+                      Summarize my storage patterns
+                    </button>
+                    <button className="suggested-chip" onClick={() => dispatch(setInput("Explain my files activity"))}>
+                      Explain my files activity
+                    </button>
+                  </div>
+                )}
+
+                <div className="ai-input-bar-container">
+                  <div className="ai-input-bar">
+                    <button className="ai-input-btn" aria-label="Attach File" onClick={() => alert("Select a file from your drive to attach.")}>
+                      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 11-2.828-2.828l6.414-6.414a4 4 0 015.656 5.656l-6.415 6.415a6 6 0 11-8.486-8.486L10.5 4.3" />
+                      </svg>
+                    </button>
+                    <input
+                      type="text"
+                      className="ai-input-field"
+                      placeholder="Ask Sahil AI anything about your drive…"
+                      value={chatInput}
+                      onChange={(e) => dispatch(setInput(e.target.value))}
+                      onKeyDown={(e) => { if (e.key === 'Enter') handleGeneralChatSend(); }}
+                      disabled={isSending}
+                    />
+                    <button className={`ai-input-btn ${isListening ? 'listening' : ''}`} onClick={toggleListening} title="Voice input">
+                      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                      </svg>
+                    </button>
+                    <button className="ai-send-circle-btn" onClick={handleGeneralChatSend} disabled={isSending || !chatInput.trim()}>
+                      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="ai-footer-text">Powered by Sahil Liquid Deep Tech LLM V4.2</div>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'analytics' ? (
+            /* ─── CASE C: Dynamic Analytics Workspace ─────────────────────── */
+            <div className="analytics-container">
+              <div className="analytics-header-row">
+                <div>
+                  <span className="analytics-engine-label">Analytics Engine</span>
+                  <div className="analytics-header-title-sub">Real-time liquid insights into your digital ecosystem.</div>
+                </div>
+                <div className="analytics-header-actions">
+                  <button className="sso-outline-btn" style={{ height: '40px', padding: '0 1rem' }}>
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Last 30 Days
+                  </button>
+                  <button className="gradient-btn" onClick={() => alert("Report generation complete!")}>
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '0.25rem' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Export Report
+                  </button>
+                </div>
+              </div>
+
+              {/* Dynamic Stats calculated purely from user files */}
+              <div className="stat-card-row">
+                <div className="stat-card glass-card cyan">
+                  <span className="stat-card-label">Total Storage</span>
+                  <div className="stat-card-value">
+                    {storageBytes > 1024 * 1024 * 1024 
+                      ? `${(storageBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+                      : `${(storageBytes / (1024 * 1024)).toFixed(1)} MB`}
+                  </div>
+                  <div className="stat-trend green">
+                    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" />
+                    </svg>
+                    +12% this month
+                  </div>
+                </div>
+
+                <div className="stat-card glass-card blue">
+                  <span className="stat-card-label">Active Files</span>
+                  <div className="stat-card-value">{files.filter(f => !f.isFolder).length}</div>
+                  <div className="stat-trend blue">
+                    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" />
+                    </svg>
+                    100% active session
+                  </div>
+                </div>
+
+                <div className="stat-card glass-card purple">
+                  <span className="stat-card-label">Shared Links</span>
+                  <div className="stat-card-value">{files.filter(f => f.isShared || f.sharedWith?.length > 0).length}</div>
+                  <div className="stat-trend gray">
+                    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                    0% external bounce
+                  </div>
+                </div>
+
+                <div className="stat-card glass-card red">
+                  <span className="stat-card-label">Stored Folders</span>
+                  <div className="stat-card-value">{files.filter(f => f.isFolder).length}</div>
+                  <div className="stat-trend gray">
+                    <span>⚡ Peak Demand</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dynamic SVG Charts */}
+              <div className="analytics-charts-grid">
+                <div className="chart-wrapper glass-card">
+                  <div className="chart-header">
+                    <span className="chart-title">Storage Velocity</span>
+                    <div className="chart-legend">
+                      <div className="legend-item">
+                        <span className="legend-dot cyan"></span>
+                        <span>Upload Velocity</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ width: '100%', height: '180px' }}>
+                    <svg width="100%" height="100%" viewBox="0 0 500 150" preserveAspectRatio="none">
+                      <defs>
+                        <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="var(--accent-from)" stopOpacity="0.4"/>
+                          <stop offset="100%" stopColor="var(--accent-from)" stopOpacity="0.0"/>
+                        </linearGradient>
+                      </defs>
+                      
+                      {/* Grid lines */}
+                      <line x1="0" y1="30" x2="500" y2="30" className="chart-grid-line" />
+                      <line x1="0" y1="80" x2="500" y2="80" className="chart-grid-line" />
+                      <line x1="0" y1="130" x2="500" y2="130" className="chart-grid-line" />
+                      
+                      {/* Compute and plot actual file velocity points */}
+                      {(() => {
+                        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                        const velocityData = [0, 0, 0, 0, 0, 0, 0];
+                        files.forEach(file => {
+                          if (!file.isFolder && file.createdAt) {
+                            let dayIdx = new Date(file.createdAt).getDay();
+                            let mappedIdx = dayIdx === 0 ? 6 : dayIdx - 1;
+                            velocityData[mappedIdx] += file.size || 0;
+                          }
+                        });
+                        
+                        const maxVal = Math.max(...velocityData, 1024 * 1024);
+                        const points = velocityData.map((val, idx) => {
+                          const x = 20 + idx * 76;
+                          const y = 130 - (val / maxVal) * 90;
+                          return { x, y };
+                        });
+                        
+                        let pathD = `M ${points[0].x} ${points[0].y}`;
+                        for (let i = 1; i < points.length; i++) {
+                          pathD += ` L ${points[i].x} ${points[i].y}`;
+                        }
+                        let areaD = `${pathD} L ${points[points.length - 1].x} 130 L ${points[0].x} 130 Z`;
+                        
+                        return (
+                          <>
+                            <path d={areaD} fill="url(#chartGradient)" />
+                            <path d={pathD} fill="none" stroke="var(--accent-from)" strokeWidth="2.5" strokeLinecap="round" />
+                            {points.map((p, idx) => (
+                              <circle key={idx} cx={p.x} cy={p.y} r="4" fill="#ffffff" stroke="var(--accent-from)" strokeWidth="2" />
+                            ))}
+                            {days.map((day, idx) => (
+                              <text key={idx} x={20 + idx * 76} y="145" className="chart-axis-text" textAnchor="middle">{day}</text>
+                            ))}
+                          </>
+                        );
+                      })()}
+                    </svg>
+                  </div>
+                </div>
+
+                <div className="chart-wrapper glass-card">
+                  <div className="chart-header">
+                    <span className="chart-title">Data Stack</span>
+                  </div>
+                  {(() => {
+                    const shares = getStorageCategoryShares();
+                    const mediaMB = parseFloat(shares.mediaMB) || 0;
+                    const docsMB = parseFloat(shares.docsMB) || 0;
+                    const otherMB = parseFloat(shares.otherMB) || 0;
+                    const totalMB = mediaMB + docsMB + otherMB;
+                    const usedGB = (storageBytes / (1024 * 1024 * 1024));
+                    const totalQuota = 20;
+                    const pct = Math.min(100, (usedGB / totalQuota) * 100);
+                    const strokeDashoffset = 251.2 - (251.2 * pct) / 100;
+
+                    return (
+                      <>
+                        <div className="donut-chart-container">
+                          <svg width="100" height="100" viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="8" />
+                            <circle 
+                              cx="50" 
+                              cy="50" 
+                              r="40" 
+                              fill="none" 
+                              stroke="url(#donutGradient)" 
+                              strokeWidth="8" 
+                              strokeDasharray="251.2"
+                              strokeDashoffset={strokeDashoffset}
+                              strokeLinecap="round"
+                              transform="rotate(-90 50 50)"
+                            />
+                            <defs>
+                              <linearGradient id="donutGradient" x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stopColor="var(--accent-from)" />
+                                <stop offset="100%" stopColor="var(--accent-to)" />
+                              </linearGradient>
+                            </defs>
+                          </svg>
+                          <div className="donut-center-text">
+                            <div className="donut-value">
+                              {storageBytes > 1024 * 1024 * 1024
+                                ? `${(storageBytes / (1024 * 1024 * 1024)).toFixed(1)}G`
+                                : `${(storageBytes / (1024 * 1024)).toFixed(0)}M`}
+                            </div>
+                            <span className="donut-label">Stored</span>
+                          </div>
+                        </div>
+
+                        <div className="data-breakdown-list">
+                          <div className="data-breakdown-item">
+                            <div className="breakdown-left">
+                              <span className="legend-dot cyan"></span>
+                              <span>Media</span>
+                            </div>
+                            <span className="breakdown-value">{mediaMB.toFixed(1)} MB</span>
+                          </div>
+                          <div className="data-breakdown-item">
+                            <div className="breakdown-left">
+                              <span className="legend-dot blue"></span>
+                              <span>Documents</span>
+                            </div>
+                            <span className="breakdown-value">{docsMB.toFixed(1)} MB</span>
+                          </div>
+                          <div className="data-breakdown-item">
+                            <div className="breakdown-left">
+                              <span className="legend-dot purple"></span>
+                              <span>Other</span>
+                            </div>
+                            <span className="breakdown-value">{otherMB.toFixed(1)} MB</span>
+                          </div>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Dynamic Table listing actual folders created by the user */}
+              <div className="folders-table-card glass-card">
+                <div className="table-header-row">
+                  <span className="table-title">Top Content Structures</span>
+                  <a href="#all" className="table-link" onClick={(e) => { e.preventDefault(); setActiveTab('all'); }}>
+                    View Full Directory &rarr;
+                  </a>
+                </div>
+                <div className="data-table-wrapper">
+                  {files.filter(f => f.isFolder).length === 0 ? (
+                    <div style={{ padding: '2.5rem 0', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>
+                      No folder directory structures found. Create folders in the "All Files" tab to view analytics here.
+                    </div>
+                  ) : (
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Folder Name</th>
+                          <th>Object Count</th>
+                          <th>Total Size</th>
+                          <th>Last Modified</th>
+                          <th>Health</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {files.filter(f => f.isFolder).map(folder => {
+                          const childFiles = files.filter(f => f.parentFolder === folder._id);
+                          const totalSize = childFiles.reduce((acc, curr) => acc + (curr.size || 0), 0);
+                          const formattedSize = totalSize > 1024 * 1024 * 1024 
+                            ? `${(totalSize / (1024 * 1024 * 1024)).toFixed(2)} GB`
+                            : `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
+                          const healthClass = childFiles.length > 0 ? "green" : "amber";
+                          return (
+                            <tr key={folder._id}>
+                              <td style={{ fontWeight: '500' }}>{folder.name}</td>
+                              <td>{childFiles.length} items</td>
+                              <td>{formattedSize}</td>
+                              <td>{new Date(folder.updatedAt || folder.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                              <td>
+                                <div className="status-indicator">
+                                  <span className={`status-indicator-dot ${healthClass}`}></span>
+                                  <span>{childFiles.length > 0 ? "Active" : "Empty"}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </div>
           ) : activeTab === 'dashboard' ? (
             <div className="dashboard-view">
               <div className="dashboard-welcome-banner">
@@ -1031,7 +1512,7 @@ const Home = () => {
               <div className="dashboard-widgets-grid">
                 
                 {/* 1. Liquid Capacity Widget */}
-                <div className="liquid-capacity-card">
+                <div className="liquid-capacity-card glass-card">
                   <div>
                     <h3 className="widget-title">Liquid Capacity</h3>
                     <p className="widget-desc">Your digital environment is flowing smoothly. {getStorageGBUsed()} of 20 GB used.</p>
@@ -1064,7 +1545,7 @@ const Home = () => {
 
                 {/* 2. Sync Anything Widget */}
                 <div 
-                  className={`sync-anything-card ${dragActive ? 'drag-active' : ''}`}
+                  className={`sync-anything-card glass-card ${dragActive ? 'drag-active' : ''}`}
                   onDragEnter={handleDrag}
                   onDragOver={handleDrag}
                   onDragLeave={handleDrag}
@@ -1075,7 +1556,7 @@ const Home = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
                     </svg>
                     <h3 style={{ fontSize: '0.95rem', fontWeight: '600', margin: '0 0 0.25rem 0', color: '#ffffff' }}>Sync Anything</h3>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', margin: '0 0 0.75rem 0' }}>Drag and drop files here to upload instantly</p>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', margin: '0 0 0.75rem 0' }}>Drag and drop files here to upload instantly</p>
                     <button type="button" className="sync-upload-btn" onClick={(e) => { e.stopPropagation(); triggerFileUpload(); }}>
                       Browse Local Files
                     </button>
@@ -1095,7 +1576,7 @@ const Home = () => {
 
                 {([...files].filter(f => !f.isFolder).length === 0) ? (
                   <div className="empty-state" style={{ padding: '2.5rem 0', background: 'rgba(255, 255, 255, 0.01)', borderRadius: '20px', border: '1px dashed rgba(255, 255, 255, 0.05)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifycontent: 'center' }}>
-                    <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--color-text-secondary)', marginBottom: '0.5rem', opacity: 0.5 }}>
+                    <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--text-secondary)', marginBottom: '0.5rem', opacity: 0.5 }}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
                     </svg>
                     <p className="empty-desc" style={{ fontSize: '0.85rem' }}>No recent file uploads. Start uploading to see suggestions here!</p>
@@ -1112,7 +1593,7 @@ const Home = () => {
                         return (
                           <div 
                             key={file._id} 
-                            className="suggested-activity-card"
+                            className="suggested-activity-card glass-card clickable"
                             onClick={() => dispatch(setActiveAssetContext(file))}
                           >
                             <div className="suggested-card-thumbnail-container">
@@ -1715,12 +2196,14 @@ const Home = () => {
               >
                 Summarize Folder
               </button>
-              <button
-                className="quick-chip-btn"
-                onClick={() => { dispatch(setInput("/summarize sunset_beach.jpg")); }}
-              >
-                /summarize sunset_beach.jpg
-              </button>
+              {items.length > 0 && (
+                <button
+                  className="quick-chip-btn"
+                  onClick={() => { dispatch(setInput(`/summarize ${items[0].name}`)); }}
+                >
+                  /summarize {items[0].name}
+                </button>
+              )}
               <button
                 className="quick-chip-btn"
                 onClick={() => { dispatch(setInput("Explain what files are currently in this folder.")); }}

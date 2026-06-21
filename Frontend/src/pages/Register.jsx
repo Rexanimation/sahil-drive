@@ -5,7 +5,7 @@ import { API_URL } from '../config';
 import '../styles/Dashboard.css';
 
 const Register = () => {
-    const [form, setForm] = useState({ email: '', firstname: '', lastname: '', password: '' });
+    const [form, setForm] = useState({ email: '', fullName: '', password: '' });
     const [submitting, setSubmitting] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
@@ -61,8 +61,18 @@ const Register = () => {
         setSubmitting(true);
         setErrorMsg('');
 
-        if (!form.email || !form.firstname || !form.lastname || !form.password) {
+        if (!form.email || !form.fullName || !form.password) {
             setErrorMsg("All fields are required");
+            setSubmitting(false);
+            return;
+        }
+
+        const nameParts = form.fullName.trim().split(/\s+/);
+        const firstname = nameParts[0] || '';
+        const lastname = nameParts.slice(1).join(' ') || '';
+
+        if (!firstname) {
+            setErrorMsg("Please enter your name");
             setSubmitting(false);
             return;
         }
@@ -70,8 +80,8 @@ const Register = () => {
         axios.post(`${API_URL}/api/auth/register`, {
             email: form.email,
             fullName: {
-                firstName: form.firstname,
-                lastName: form.lastname
+                firstName: firstname,
+                lastName: lastname
             },
             password: form.password
         }, {
@@ -88,17 +98,18 @@ const Register = () => {
 
     return (
         <div className="auth-container">
-            <div className="auth-glass-card" role="main">
-                <header className="auth-brand" style={{ marginBottom: '1.5rem' }}>
-                    <div className="auth-logo-wrapper" style={{ marginBottom: '0.5rem' }}>
-                        <svg className="auth-logo-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 13l2 2 4-4" />
-                        </svg>
-                    </div>
-                    <h1 className="auth-brand-name" style={{ fontSize: '1.5rem' }}>Sahil Drive</h1>
-                </header>
+            <header className="auth-brand" style={{ marginBottom: '1.5rem' }}>
+                <div className="auth-logo-wrapper" style={{ marginBottom: '0.5rem' }}>
+                    <svg className="auth-logo-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 13l2 2 4-4" />
+                    </svg>
+                </div>
+                <h1 className="auth-brand-name" style={{ fontSize: '1.5rem' }}>Sahil Drive</h1>
+                <p className="auth-brand-subtitle">Securely liquid cloud architecture.</p>
+            </header>
 
+            <div className="auth-glass-card" role="main">
                 <h2 className="auth-card-title">Create Account</h2>
                 <p className="auth-card-desc">Start your journey with premium cloud storage</p>
 
@@ -109,49 +120,25 @@ const Register = () => {
                 )}
 
                 <form className="auth-form" onSubmit={handleSubmit} noValidate>
-                    <div className="grid-2">
-                        <div className="auth-input-group">
-                            <label className="auth-input-label" htmlFor="firstname">First Name</label>
-                            <div className="auth-input-wrapper">
-                                <span className="auth-input-icon-left" style={{ left: '0.75rem' }}>
-                                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                    </svg>
-                                </span>
-                                <input
-                                    id="firstname"
-                                    name="firstname"
-                                    type="text"
-                                    className="auth-input"
-                                    style={{ paddingLeft: '2.5rem' }}
-                                    placeholder=""
-                                    value={form.firstname}
-                                    onChange={handleChange}
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <div className="auth-input-group">
-                            <label className="auth-input-label" htmlFor="lastname">Last Name</label>
-                            <div className="auth-input-wrapper">
-                                <span className="auth-input-icon-left" style={{ left: '0.75rem' }}>
-                                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                                    </svg>
-                                </span>
-                                <input
-                                    id="lastname"
-                                    name="lastname"
-                                    type="text"
-                                    className="auth-input"
-                                    style={{ paddingLeft: '2.5rem' }}
-                                    placeholder=""
-                                    value={form.lastname}
-                                    onChange={handleChange}
-                                    required
-                                />
-                            </div>
+                    <div className="auth-input-group">
+                        <label className="auth-input-label" htmlFor="fullName">Full Name</label>
+                        <div className="auth-input-wrapper">
+                            <span className="auth-input-icon-left">
+                                <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                </svg>
+                            </span>
+                            <input
+                                id="fullName"
+                                name="fullName"
+                                type="text"
+                                className="auth-input"
+                                style={{ paddingLeft: '3rem' }}
+                                placeholder="John Doe"
+                                value={form.fullName}
+                                onChange={handleChange}
+                                required
+                            />
                         </div>
                     </div>
 
