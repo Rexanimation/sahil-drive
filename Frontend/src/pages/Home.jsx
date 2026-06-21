@@ -31,12 +31,12 @@ const Home = () => {
   const navigate = useNavigate();
 
   // Redux state
-  const chats = useSelector(state => state.chat.chats);
+  const chats = useSelector(state => state.chat.chats || []);
   const activeChatId = useSelector(state => state.chat.activeChatId);
   const chatInput = useSelector(state => state.chat.input);
   const isSending = useSelector(state => state.chat.isSending);
 
-  const files = useSelector(state => state.asset.files);
+  const files = useSelector(state => state.asset.files || []);
   const activeAsset = useSelector(state => state.asset.activeAssetContext);
   const uploading = useSelector(state => state.asset.uploading);
   const analysisProgress = useSelector(state => state.asset.analysisProgress);
@@ -679,7 +679,7 @@ const Home = () => {
     let docsBytes = 0;
     let otherBytes = 0;
 
-    files.forEach(file => {
+    (files || []).forEach(file => {
       if (!file.isFolder) {
         const type = file.type || '';
         const size = file.size || 0;
@@ -792,8 +792,8 @@ const Home = () => {
   const activeFileConversation = fileChats[activeAsset?._id] || [];
   
   // Separate folder and file arrays
-  const folders = files.filter(f => f.isFolder);
-  const items = files.filter(f => !f.isFolder);
+  const folders = (files || []).filter(f => f.isFolder);
+  const items = (files || []).filter(f => !f.isFolder);
 
   return (
     <div className="dashboard-root">
@@ -961,16 +961,22 @@ const Home = () => {
             <div style={{ position: 'relative' }}>
               <button className="profile-badge-btn" onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}>
                 <div className="profile-initials-circle">
-                  {user ? `${user.fullName.firstName[0]}${user.fullName.lastName[0]}`.toUpperCase() : "SU"}
+                  {user?.fullName?.firstName && user?.fullName?.lastName
+                    ? `${user.fullName.firstName[0]}${user.fullName.lastName[0]}`.toUpperCase()
+                    : "SU"}
                 </div>
                 <span className="profile-name-text">
-                  {user ? `${user.fullName.firstName} ${user.fullName.lastName}` : "Sahil User"}
+                  {user?.fullName?.firstName && user?.fullName?.lastName
+                    ? `${user.fullName.firstName} ${user.fullName.lastName}`
+                    : "Sahil User"}
                 </span>
               </button>
               {profileDropdownOpen && (
                 <div className="profile-dropdown">
                   <span style={{ padding: '0.6rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', borderBottom: '1px solid var(--glass-border)' }}>
-                    {user ? `${user.fullName.firstName} ${user.fullName.lastName}` : "User Profile"}
+                    {user?.fullName?.firstName && user?.fullName?.lastName
+                      ? `${user.fullName.firstName} ${user.fullName.lastName}`
+                      : "User Profile"}
                   </span>
                   <button className="dropdown-item" onClick={() => { setProfileDropdownOpen(false); alert("Account settings are secure."); }}>My Account</button>
                   <button className="dropdown-item" style={{ color: '#f87171' }} onClick={handleLogout}>Sign Out</button>
@@ -1333,7 +1339,7 @@ const Home = () => {
                       {(() => {
                         const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
                         const velocityData = [0, 0, 0, 0, 0, 0, 0];
-                        files.forEach(file => {
+                        (files || []).forEach(file => {
                           if (!file.isFolder && file.createdAt) {
                             let dayIdx = new Date(file.createdAt).getDay();
                             let mappedIdx = dayIdx === 0 ? 6 : dayIdx - 1;
