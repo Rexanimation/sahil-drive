@@ -78,20 +78,19 @@ const Login = () => {
 
     return (
         <div className="auth-container">
-            <header className="auth-brand">
-                <div className="auth-logo-wrapper">
-                    <svg className="auth-logo-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 13l2 2 4-4" />
-                    </svg>
-                </div>
-                <h1 className="auth-brand-name">Sahil Drive</h1>
-                <p className="auth-brand-subtitle">The Future of AI-Powered Cloud Storage</p>
-            </header>
-
             <div className="auth-glass-card" role="main">
+                <header className="auth-brand" style={{ marginBottom: '1.5rem' }}>
+                    <div className="auth-logo-wrapper" style={{ marginBottom: '0.5rem' }}>
+                        <svg className="auth-logo-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 13l2 2 4-4" />
+                        </svg>
+                    </div>
+                    <h1 className="auth-brand-name" style={{ fontSize: '1.5rem' }}>Sahil Drive</h1>
+                </header>
+
                 <h2 className="auth-card-title">Welcome Back</h2>
-                <p className="auth-card-desc">Access your digital vault and AI insights.</p>
+                <p className="auth-card-desc">Access your secure digital vault</p>
 
                 {errorMsg && (
                     <div style={{ color: '#ef4444', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '0.75rem', borderRadius: '8px', fontSize: '0.85rem', marginBottom: '1.25rem', border: '1px solid rgba(239, 68, 68, 0.2)' }}>

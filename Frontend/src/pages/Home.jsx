@@ -44,7 +44,8 @@ const Home = () => {
 
   // Local state
   const [user, setUser] = useState(null);
-  const [activeTab, setActiveTab] = useState('all'); // 'all', 'image', 'video', 'favorites', 'shared'
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'all', 'image', 'video', 'favorites', 'shared'
+  const [dragActive, setDragActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAiOpen, setIsAiOpen] = useState(true);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
@@ -338,8 +339,7 @@ const Home = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
+  const uploadSingleFile = async (file) => {
     if (!file) return;
 
     const trackingId = Math.random().toString(36).substring(7);
@@ -759,6 +759,15 @@ const Home = () => {
 
           <nav className="sidebar-nav">
             <button
+              className={`sidebar-nav-item ${activeTab === 'dashboard' && !activeAsset ? 'active' : ''}`}
+              onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('dashboard'); }}
+            >
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              </svg>
+              Dashboard
+            </button>
+            <button
               className={`sidebar-nav-item ${activeTab === 'all' && !activeAsset ? 'active' : ''}`}
               onClick={() => { dispatch(setActiveAssetContext(null)); navigateToFolder(null); setActiveTab('all'); }}
             >
@@ -897,26 +906,28 @@ const Home = () => {
         <div className="canvas-content">
           
           {/* Breadcrumbs trail */}
-          <nav className="breadcrumbs" aria-label="Breadcrumb">
-            <span className="breadcrumb-item" onClick={() => navigateToFolder(null)}>My Drive</span>
-            {folderPath.map((folder, index) => (
-              <React.Fragment key={folder._id}>
-                <span className="breadcrumb-separator">&gt;</span>
-                <span 
-                  className={`breadcrumb-item ${index === folderPath.length - 1 && !activeAsset ? 'active' : ''}`}
-                  onClick={() => navigateToFolder(folder._id, folder.name)}
-                >
-                  {folder.name}
-                </span>
-              </React.Fragment>
-            ))}
-            {activeAsset && (
-              <>
-                <span className="breadcrumb-separator">&gt;</span>
-                <span className="breadcrumb-item active">{activeAsset.name}</span>
-              </>
-            )}
-          </nav>
+          {activeTab !== 'dashboard' && (
+            <nav className="breadcrumbs" aria-label="Breadcrumb">
+              <span className="breadcrumb-item" onClick={() => navigateToFolder(null)}>My Drive</span>
+              {folderPath.map((folder, index) => (
+                <React.Fragment key={folder._id}>
+                  <span className="breadcrumb-separator">&gt;</span>
+                  <span 
+                    className={`breadcrumb-item ${index === folderPath.length - 1 && !activeAsset ? 'active' : ''}`}
+                    onClick={() => navigateToFolder(folder._id, folder.name)}
+                  >
+                    {folder.name}
+                  </span>
+                </React.Fragment>
+              ))}
+              {activeAsset && (
+                <>
+                  <span className="breadcrumb-separator">&gt;</span>
+                  <span className="breadcrumb-item active">{activeAsset.name}</span>
+                </>
+              )}
+            </nav>
+          )}
 
           {/* ─── CASE A: File detail / analysis panel view ────────────────── */}
           {activeAsset ? (
@@ -1008,6 +1019,136 @@ const Home = () => {
                     <span className="metadata-panel-subvalue">Cloud Storage Secured</span>
                   </div>
                 </div>
+              </div>
+            </div>
+          ) : activeTab === 'dashboard' ? (
+            <div className="dashboard-view">
+              <div className="dashboard-welcome-banner">
+                <h2>Welcome Back, {user?.fullName?.firstName || "Explorer"}</h2>
+                <p>Your digital universe is synchronized and running at peak performance.</p>
+              </div>
+
+              <div className="dashboard-widgets-grid">
+                
+                {/* 1. Liquid Capacity Widget */}
+                <div className="liquid-capacity-card">
+                  <div>
+                    <h3 className="widget-title">Liquid Capacity</h3>
+                    <p className="widget-desc">Your digital environment is flowing smoothly. {getStorageGBUsed()} of 20 GB used.</p>
+                  </div>
+                  
+                  <div className="liquid-progress-bar-wrapper">
+                    <div className="liquid-progress-bar-bg">
+                      <div 
+                        className="liquid-progress-bar-fill" 
+                        style={{ width: `${Math.min(100, (storageBytes / (20 * 1024 * 1024 * 1024)) * 100)}%` }}
+                      ></div>
+                    </div>
+                    
+                    <div className="liquid-progress-labels">
+                      <div className="liquid-progress-label-item">
+                        <span className="liquid-progress-dot media"></span>
+                        <span>Media ({getStorageCategoryShares().mediaMB || '0.0'} MB)</span>
+                      </div>
+                      <div className="liquid-progress-label-item">
+                        <span className="liquid-progress-dot docs"></span>
+                        <span>Documents ({getStorageCategoryShares().docsMB || '0.0'} MB)</span>
+                      </div>
+                      <div className="liquid-progress-label-item">
+                        <span className="liquid-progress-dot other"></span>
+                        <span>Other ({getStorageCategoryShares().otherMB || '0.0'} MB)</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Sync Anything Widget */}
+                <div 
+                  className={`sync-anything-card ${dragActive ? 'drag-active' : ''}`}
+                  onDragEnter={handleDrag}
+                  onDragOver={handleDrag}
+                  onDragLeave={handleDrag}
+                  onDrop={handleDrop}
+                >
+                  <div className="sync-dropzone-inner" onClick={triggerFileUpload}>
+                    <svg className="sync-upload-icon" width="36" height="36" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                    </svg>
+                    <h3 style={{ fontSize: '0.95rem', fontWeight: '600', margin: '0 0 0.25rem 0', color: '#ffffff' }}>Sync Anything</h3>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', margin: '0 0 0.75rem 0' }}>Drag and drop files here to upload instantly</p>
+                    <button type="button" className="sync-upload-btn" onClick={(e) => { e.stopPropagation(); triggerFileUpload(); }}>
+                      Browse Local Files
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+
+              {/* 3. Suggested Activity */}
+              <div className="suggested-activity-section">
+                <div className="suggested-activity-header">
+                  <h3>Suggested Activity</h3>
+                  <a href="#all" className="suggested-activity-link" onClick={(e) => { e.preventDefault(); setActiveTab('all'); }}>
+                    View all files
+                  </a>
+                </div>
+
+                {([...files].filter(f => !f.isFolder).length === 0) ? (
+                  <div className="empty-state" style={{ padding: '2.5rem 0', background: 'rgba(255, 255, 255, 0.01)', borderRadius: '20px', border: '1px dashed rgba(255, 255, 255, 0.05)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifycontent: 'center' }}>
+                    <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--color-text-secondary)', marginBottom: '0.5rem', opacity: 0.5 }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                    </svg>
+                    <p className="empty-desc" style={{ fontSize: '0.85rem' }}>No recent file uploads. Start uploading to see suggestions here!</p>
+                  </div>
+                ) : (
+                  <div className="suggested-activity-grid">
+                    {[...files]
+                      .filter(f => !f.isFolder)
+                      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                      .slice(0, 3)
+                      .map(file => {
+                        const isVideo = file.type?.startsWith('video/');
+                        const isImage = file.type?.startsWith('image/');
+                        return (
+                          <div 
+                            key={file._id} 
+                            className="suggested-activity-card"
+                            onClick={() => dispatch(setActiveAssetContext(file))}
+                          >
+                            <div className="suggested-card-thumbnail-container">
+                              {isImage ? (
+                                <img src={getFileUrl(file.url)} alt={file.name} className="suggested-card-thumbnail" />
+                              ) : isVideo ? (
+                                <>
+                                  <img src="https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800" alt={file.name} className="suggested-card-thumbnail" />
+                                  <div className="suggested-video-play-overlay">
+                                    <div className="suggested-play-button">
+                                      <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M8 5v14l11-7z" />
+                                      </svg>
+                                    </div>
+                                  </div>
+                                </>
+                              ) : (
+                                <div className="suggested-card-icon-wrapper">
+                                  <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                  </svg>
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div className="suggested-card-details">
+                              <h4 className="suggested-card-title" title={file.name}>{file.name}</h4>
+                              <span className="suggested-card-meta">
+                                {getRelativeTime(file.createdAt)} • {formatBytes(file.size)}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -1541,11 +1682,15 @@ const Home = () => {
           <div className="drawer-chat-container">
             <div className="drawer-chat-history">
               {generalMessages.length === 0 ? (
-                <div style={{ textAlign: 'center', color: 'var(--color-text-secondary)', padding: '2rem 1rem' }}>
-                  <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5" style={{ marginBottom: '1rem', opacity: 0.5 }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                  <p style={{ fontSize: '0.85rem' }}>No messages yet. Ask Sahil GPT to explore or describe assets.</p>
+                <div className="ai-empty-state">
+                  <div className="ai-empty-shield-container">
+                    <div className="ai-empty-shield-glow"></div>
+                    <svg className="ai-empty-shield-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                    </svg>
+                  </div>
+                  <h3 className="ai-empty-title">How can I accelerate your workflow?</h3>
+                  <p className="ai-empty-subtitle">I can analyze your cloud storage documents, generate summaries, or help you find specific files using natural language.</p>
                 </div>
               ) : (
                 generalMessages.map((msg, idx) => (

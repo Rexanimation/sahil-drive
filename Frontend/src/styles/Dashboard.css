@@ -3,17 +3,17 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --color-drive-bg: #090d16;
-  --color-card-bg: #111823;
-  --color-sidebar-bg: #0b0f19;
-  --color-border-dark: #1e293b;
+  --color-drive-bg: #020617;
+  --color-card-bg: rgba(15, 23, 42, 0.45);
+  --color-sidebar-bg: rgba(10, 15, 30, 0.6);
+  --color-border-dark: rgba(255, 255, 255, 0.08);
   --color-text-primary: #f8fafc;
   --color-text-secondary: #94a3b8;
   --color-text-cyan: #22d3ee;
   --color-text-purple: #a78bfa;
-  --color-accent-blue: #06b6d4;
-  --color-accent-purple: #7c3aed;
-  --gradient-btn: linear-gradient(135deg, #7c3aed 0%, #06b6d4 100%);
+  --color-accent-blue: #0ea5e9;
+  --color-accent-purple: #6366f1;
+  --gradient-btn: linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%);
   --gradient-text: linear-gradient(90deg, #22d3ee 0%, #a78bfa 100%);
   --font-outfit: 'Outfit', system-ui, -apple-system, sans-serif;
 }
@@ -21,7 +21,13 @@
 body {
   margin: 0;
   padding: 0;
-  background-color: var(--color-drive-bg);
+  background-color: #020617;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(6, 182, 212, 0.12) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(124, 58, 237, 0.12) 0px, transparent 50%),
+    radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 24px 24px;
+  background-attachment: fixed;
   color: var(--color-text-primary);
   font-family: var(--font-outfit);
   overflow-x: hidden;
@@ -37,7 +43,7 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at center, #111a30 0%, #090d16 100%);
+  background: transparent;
   padding: 2rem 1rem;
 }
 
@@ -84,12 +90,12 @@ body {
 .auth-glass-card {
   width: 100%;
   max-width: 440px;
-  background: rgba(17, 24, 39, 0.75);
-  backdrop-filter: blur(16px);
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(24px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 24px;
   padding: 2.5rem;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.1);
 }
 
 .auth-card-title {
@@ -338,7 +344,7 @@ body {
   display: flex;
   height: 100vh;
   width: 100vw;
-  background-color: var(--color-drive-bg);
+  background: transparent;
   overflow: hidden;
   position: relative;
 }
@@ -347,8 +353,9 @@ body {
 .sidebar-left {
   width: 260px;
   min-width: 260px;
-  background-color: var(--color-sidebar-bg);
-  border-right: 1px solid var(--color-border-dark);
+  background: rgba(10, 15, 30, 0.6) !important;
+  backdrop-filter: blur(24px) saturate(180%);
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -511,12 +518,14 @@ body {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background-color: var(--color-drive-bg);
+  background: transparent !important;
 }
 
 .top-bar {
   height: 70px;
-  border-bottom: 1px solid var(--color-border-dark);
+  background: rgba(10, 15, 30, 0.3) !important;
+  backdrop-filter: blur(24px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1089,8 +1098,9 @@ body {
   width: 380px;
   min-width: 380px;
   height: 100%;
-  background-color: var(--color-sidebar-bg);
-  border-left: 1px solid var(--color-border-dark);
+  background: rgba(10, 15, 30, 0.6) !important;
+  backdrop-filter: blur(24px) saturate(180%);
+  border-left: 1px solid rgba(255, 255, 255, 0.08) !important;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -2097,4 +2107,408 @@ body {
   background: rgba(6, 182, 212, 0.2);
   border-color: var(--color-accent-blue);
   box-shadow: 0 0 8px rgba(6, 182, 212, 0.2);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Liquid Glass Dashboard view widgets
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.dashboard-view {
+  display: flex;
+  flex-direction: column;
+  gap: 2.25rem;
+  padding: 0.5rem 1rem;
+}
+
+.dashboard-welcome-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dashboard-welcome-banner h2 {
+  font-size: 2.25rem;
+  font-weight: 700;
+  margin: 0;
+  background: var(--gradient-text);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-family: var(--font-outfit);
+}
+
+.dashboard-welcome-banner p {
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.dashboard-widgets-grid {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 2rem;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-widgets-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.liquid-capacity-card, .sync-anything-card {
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  padding: 2.25rem;
+  box-shadow: 
+    0 10px 30px rgba(0, 0, 0, 0.3),
+    inset 0 1px 1px rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 220px;
+  position: relative;
+  overflow: hidden;
+}
+
+.liquid-capacity-card::before {
+  content: '';
+  position: absolute;
+  top: -50px;
+  right: -50px;
+  width: 150px;
+  height: 150px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.sync-anything-card::before {
+  content: '';
+  position: absolute;
+  bottom: -50px;
+  left: -50px;
+  width: 150px;
+  height: 150px;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.15) 0%, transparent 70%);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.widget-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  color: #ffffff;
+  z-index: 1;
+}
+
+.widget-desc {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 1.5rem 0;
+  line-height: 1.4;
+  z-index: 1;
+}
+
+/* Storage Bar Styles */
+.liquid-progress-bar-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  z-index: 1;
+}
+
+.liquid-progress-bar-bg {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.liquid-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1 0%, #22d3ee 100%);
+  border-radius: 4px;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.4);
+  transition: width 0.4s cubic-bezier(0.1, 0.8, 0.25, 1);
+}
+
+.liquid-progress-labels {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  flex-wrap: wrap;
+}
+
+.liquid-progress-label-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.liquid-progress-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.liquid-progress-dot.media { background-color: #22d3ee; box-shadow: 0 0 6px #22d3ee; }
+.liquid-progress-dot.docs { background-color: #6366f1; box-shadow: 0 0 6px #6366f1; }
+.liquid-progress-dot.other { background-color: #94a3b8; }
+
+/* Drag & Drop Upload Zone */
+.sync-anything-card.drag-active {
+  border-color: var(--color-text-cyan);
+  background: rgba(6, 182, 212, 0.04);
+  box-shadow: 0 0 25px rgba(6, 182, 212, 0.15);
+}
+
+.sync-dropzone-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-grow: 1;
+  text-align: center;
+  z-index: 1;
+  cursor: pointer;
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  padding: 1.5rem;
+  transition: all 0.2s ease;
+}
+
+.sync-dropzone-inner:hover {
+  border-color: rgba(6, 182, 212, 0.4);
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.sync-upload-icon {
+  color: var(--color-text-cyan);
+  filter: drop-shadow(0 0 8px rgba(6, 182, 212, 0.4));
+  margin-bottom: 0.75rem;
+  animation: float-slow 3s ease-in-out infinite;
+}
+
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.sync-upload-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 0.5rem;
+}
+
+.sync-upload-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Suggested Activity Section */
+.suggested-activity-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.suggested-activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.suggested-activity-header h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
+}
+
+.suggested-activity-link {
+  font-size: 0.85rem;
+  color: var(--color-text-cyan);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.suggested-activity-link:hover {
+  text-decoration: underline;
+}
+
+.suggested-activity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.suggested-activity-card {
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+}
+
+.suggested-activity-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(6, 182, 212, 0.3);
+  box-shadow: 
+    0 12px 25px rgba(0, 0, 0, 0.4),
+    0 0 15px rgba(6, 182, 212, 0.1);
+}
+
+.suggested-card-thumbnail-container {
+  height: 160px;
+  position: relative;
+  background: #0f1420;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.suggested-card-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.suggested-video-play-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.suggested-activity-card:hover .suggested-video-play-overlay {
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.suggested-play-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(2, 132, 199, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 15px rgba(2, 132, 199, 0.4);
+  transition: all 0.2s ease;
+}
+
+.suggested-activity-card:hover .suggested-play-button {
+  transform: scale(1.1);
+  background: #0284c7;
+}
+
+.suggested-card-icon-wrapper {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  background: rgba(99, 102, 241, 0.15);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: var(--color-text-purple);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.1);
+}
+
+.suggested-card-details {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.suggested-card-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin: 0;
+}
+
+.suggested-card-meta {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+/* AI Collapsible Drawer Empty State redesign */
+.ai-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3.5rem 1.5rem;
+  text-align: center;
+}
+
+.ai-empty-shield-container {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 8px 24px rgba(6, 182, 212, 0.15);
+}
+
+.ai-empty-shield-glow {
+  position: absolute;
+  inset: -6px;
+  background: linear-gradient(135deg, #06b6d4, #7c3aed);
+  border-radius: 24px;
+  filter: blur(12px);
+  opacity: 0.3;
+  z-index: -1;
+}
+
+.ai-empty-shield-icon {
+  color: #22d3ee;
+  filter: drop-shadow(0 0 8px rgba(6, 182, 212, 0.5));
+}
+
+.ai-empty-title {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem 0;
+  color: #ffffff;
+}
+
+.ai-empty-subtitle {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  max-width: 290px;
+  margin: 0;
 }
