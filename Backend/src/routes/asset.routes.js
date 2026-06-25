@@ -8,9 +8,6 @@ const router = express.Router();
 /* POST /api/assets/upload */
 router.post('/upload', authMiddleware.authUser, uploadMiddleware.single('file'), assetController.uploadAsset);
 
-/* POST /api/assets/folder */
-router.post('/folder', authMiddleware.authUser, assetController.createFolder);
-
 /* GET /api/assets/ */
 router.get('/', authMiddleware.authUser, assetController.getAssets);
 
@@ -23,8 +20,8 @@ router.get('/analytics', authMiddleware.authUser, assetController.getAnalytics);
 /* PUT /api/assets/:id/favorite */
 router.put('/:id/favorite', authMiddleware.authUser, assetController.toggleFavorite);
 
-/* PUT /api/assets/move */
-router.put('/move', authMiddleware.authUser, assetController.moveAssets);
+/* PUT /api/assets/:id/rename */
+router.put('/:id/rename', authMiddleware.authUser, assetController.renameAsset);
 
 /* DELETE /api/assets/:id */
 router.delete('/:id', authMiddleware.authUser, assetController.deleteAsset);

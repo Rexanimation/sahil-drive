@@ -69,7 +69,7 @@ async function getStorageForUser(user) {
  */
 async function uploadFile(user, name, size, buffer) {
     const storage = await getStorageForUser(user);
-    const file = await storage.upload({
+    const file = await storage.root.upload({
         name: name,
         size: size
     }, buffer).complete;

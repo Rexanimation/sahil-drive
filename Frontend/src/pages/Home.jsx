@@ -7,7 +7,7 @@ import { API_URL } from '../config';
 import '../styles/Dashboard.css';
 import AnalyticsEngine from '../components/AnalyticsEngine';
 import FileViewer from '../components/FileViewer';
-import MoveModal from '../components/MoveModal';
+
 
 import {
   setFiles,
@@ -120,16 +120,14 @@ const Home = () => {
 
   // Nested directory states
   const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'list'
-  const [currentFolderId, setCurrentFolderId] = useState(null);
-  const [folderPath, setFolderPath] = useState([]);
-  
-  // Folder Creation Modal
-  const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
-  const [folderNameInput, setFolderNameInput] = useState('');
 
-  // Multi-select & Move
+  // Rename Modal
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+  const [assetToRename, setAssetToRename] = useState(null);
+  const [renameInput, setRenameInput] = useState('');
+
+  // Multi-select
   const [selectedAssets, setSelectedAssets] = useState([]);
-  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
 
   // Share Settings Modal
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -225,7 +223,7 @@ const Home = () => {
       
       // Filter by folder level if browsing files normally and not searching
       if (tab === 'all' && !search) {
-        params.push(`parentFolderId=${folderId || 'null'}`);
+        // Flat file structure
       }
 
       if (params.length > 0 && tab !== 'shared') {
@@ -257,9 +255,9 @@ const Home = () => {
   // ─── Sync search, folder, and tab changes ───────────────────────────────────
   useEffect(() => {
     if (user) {
-      fetchAssets(activeTab, searchQuery, currentFolderId);
+      fetchAssets(activeTab, searchQuery);
     }
-  }, [activeTab, searchQuery, currentFolderId, user]);
+  }, [activeTab, searchQuery, user]);
 
   // Load User, Chats & Sockets on Mount
   useEffect(() => {
@@ -334,13 +332,13 @@ const Home = () => {
   useEffect(() => {
     if (!socket) return;
     const handleRefresh = () => {
-      fetchAssets(activeTab, searchQuery, currentFolderId);
+      fetchAssets(activeTab, searchQuery);
     };
     socket.on("refresh-assets", handleRefresh);
     return () => {
       socket.off("refresh-assets", handleRefresh);
     };
-  }, [socket, activeTab, searchQuery, currentFolderId]);
+  }, [socket, activeTab, searchQuery]);
 
   // Update messages when general chat selection changes
   useEffect(() => {
@@ -373,22 +371,10 @@ const Home = () => {
 
   // ─── Folder Navigation Breadcrumbs Logic ──────────────────────────────────
   const navigateToFolder = (folderId, folderName) => {
-    if (folderId === null || folderId === 'root') {
-      setCurrentFolderId(null);
-      setFolderPath([]);
-    } else {
-      setCurrentFolderId(folderId);
-      const idx = folderPath.findIndex(p => p._id === folderId);
-      if (idx !== -1) {
-        setFolderPath(folderPath.slice(0, idx + 1));
-      } else {
-        setFolderPath([...folderPath, { _id: folderId, name: folderName }]);
-      }
-    }
     dispatch(setActiveAssetContext(null));
   };
 
-  // ─── Multi-Selection & Bulk Move Logic ─────────────────────────────────────
+  // ─── Multi-Selection Logic ─────────────────────────────────────
   const toggleSelection = (assetId, e) => {
     e.stopPropagation();
     setSelectedAssets(prev => {
@@ -397,23 +383,6 @@ const Home = () => {
       }
       return [...prev, assetId];
     });
-  };
-
-  const handleBulkMove = async (targetFolderId) => {
-    try {
-      await axios.put(`${API_URL}/api/assets/move`, {
-        assetIds: selectedAssets,
-        targetFolderId
-      }, { withCredentials: true });
-      
-      setSelectedAssets([]);
-      setIsMoveModalOpen(false);
-      // Refresh assets
-      fetchAssets(activeTab, searchQuery, currentFolderId);
-    } catch (err) {
-      console.error("Bulk move failed:", err);
-      alert(err.response?.data?.message || "Failed to move assets");
-    }
   };
 
 
@@ -462,7 +431,7 @@ const Home = () => {
         return;
       }
       
-      // Temporarily set currentFolderId for uploadSingleFile, or just pass it to uploadSingleFile
+      // Continue to uploadSingleFile
       // We will need to update uploadSingleFile to accept a folderId argument or we can just use a local loop
       for (const file of droppedFiles) {
         await uploadSingleFile(file, droppedFiles.length > 1, targetFolderId);
@@ -489,7 +458,7 @@ const Home = () => {
       
       setSelectedAssets([]);
       // Refresh assets
-      fetchAssets(activeTab, searchQuery, currentFolderId);
+      fetchAssets(activeTab, searchQuery);
     } catch (err) {
       console.error("Drag and drop move failed:", err);
       // alert only if it's not a parse error (e.g., dropping external files)
@@ -499,23 +468,23 @@ const Home = () => {
     }
   };
 
-  // ─── Create New Folder ─────────────────────────────────────────────────────
-  const handleCreateFolder = async (e) => {
+  // ─── Rename Asset ──────────────────────────────────────────────────────────
+  const handleRenameAsset = async (e) => {
     e.preventDefault();
-    if (!folderNameInput.trim()) return;
+    if (!renameInput.trim() || !assetToRename) return;
 
     try {
-      const res = await axios.post(`${API_URL}/api/assets/folder`, {
-        name: folderNameInput.trim(),
-        parentFolderId: currentFolderId
+      const res = await axios.put(`${API_URL}/api/assets/${assetToRename._id}/rename`, {
+        newName: renameInput.trim()
       }, { withCredentials: true });
 
-      dispatch(addFile(res.data.folder));
-      setFolderNameInput('');
-      setIsCreateFolderOpen(false);
+      dispatch(updateFile(res.data.asset));
+      setIsRenameModalOpen(false);
+      setAssetToRename(null);
+      setRenameInput('');
     } catch (err) {
-      console.error("Folder creation failed:", err);
-      alert(err.response?.data?.message || "Failed to create folder");
+      console.error("Rename failed:", err);
+      alert(err.response?.data?.message || "Failed to rename");
     }
   };
 
@@ -527,7 +496,7 @@ const Home = () => {
   const uploadSingleFile = async (file, isBulk = false, folderIdOverride = null) => {
     if (!file) return;
 
-    const targetFolderId = folderIdOverride !== null ? folderIdOverride : currentFolderId;
+    // Upload to Root
 
     const trackingId = Math.random().toString(36).substring(7);
     const newUpload = {
@@ -550,8 +519,8 @@ const Home = () => {
         // Standard Single File Upload Pipeline
         const formData = new FormData();
         formData.append('file', file);
-        if (targetFolderId) {
-          formData.append('parentFolderId', targetFolderId);
+        if (folderIdOverride) {
+          formData.append('parentFolderId', folderIdOverride);
         }
 
         const response = await axios.post(`${API_URL}/api/assets/upload`, formData, {
@@ -639,7 +608,7 @@ const Home = () => {
           name: file.name,
           type: file.type,
           size: file.size,
-          parentFolderId: targetFolderId
+          parentFolderId: folderIdOverride
         }, { withCredentials: true });
 
         const newAsset = finalizeRes.data.asset;
@@ -691,8 +660,7 @@ const Home = () => {
 
     socket.emit("ai-message", {
       chat: activeChatId,
-      content: trimmed,
-      folderId: currentFolderId || 'root'
+      content: trimmed
     });
   };
 
@@ -769,6 +737,8 @@ const Home = () => {
       }));
     } catch (err) {
       console.error("Contextual action chat error:", err);
+      alert("Failed to retrieve chat context. The file may not exist or cannot be accessed.");
+      fetchAssets(activeTab, searchQuery);
     }
   };
 
@@ -789,7 +759,7 @@ const Home = () => {
       await axios.delete(`${API_URL}/api/assets/${id}`, { withCredentials: true });
       dispatch(removeFile(id));
       fetchStorageSummary();
-      fetchAssets(activeTab, searchQuery, currentFolderId); // Trigger full re-fetch
+      fetchAssets(activeTab, searchQuery); // Trigger full re-fetch
     } catch (err) {
       console.error("Error deleting asset:", err);
     }
@@ -1188,15 +1158,6 @@ const Home = () => {
             <span>{selectedAssets.length} item{selectedAssets.length !== 1 ? 's' : ''} selected</span>
             <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.3)' }}></div>
             <button 
-              onClick={() => setIsMoveModalOpen(true)}
-              style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
-            >
-              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-              </svg>
-              Move
-            </button>
-            <button 
               onClick={() => setSelectedAssets([])}
               style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', marginLeft: '10px' }}
               title="Clear Selection"
@@ -1320,18 +1281,7 @@ const Home = () => {
           {/* Breadcrumbs trail */}
           {activeTab !== 'dashboard' && (
             <nav className="breadcrumbs" aria-label="Breadcrumb">
-              <span className="breadcrumb-item" onClick={() => navigateToFolder(null)}>My Drive</span>
-              {folderPath.map((folder, index) => (
-                <React.Fragment key={folder._id}>
-                  <span className="breadcrumb-separator">&gt;</span>
-                  <span 
-                    className={`breadcrumb-item ${index === folderPath.length - 1 && !activeAsset ? 'active' : ''}`}
-                    onClick={() => navigateToFolder(folder._id, folder.name)}
-                  >
-                    {folder.name}
-                  </span>
-                </React.Fragment>
-              ))}
+              <span className="breadcrumb-item active">My Drive</span>
               {activeAsset && (
                 <>
                   <span className="breadcrumb-separator">&gt;</span>
@@ -1377,7 +1327,7 @@ const Home = () => {
                     poster="https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800"
                   />
                 ) : (
-                  <img src={getFileUrl(activeAsset.url)} alt={activeAsset.name} className="detail-media" />
+                  <img src={getFileUrl(activeAsset.url)} crossOrigin="use-credentials" alt={activeAsset.name} className="detail-media" />
                 )}
               </div>
 
@@ -1578,7 +1528,7 @@ const Home = () => {
                           >
                             <div className="suggested-card-thumbnail-container">
                               {isImage ? (
-                                <img src={getFileUrl(file.url)} alt={file.name} className="suggested-card-thumbnail" />
+                                <img src={getFileUrl(file.url)} crossOrigin="use-credentials" alt={file.name} className="suggested-card-thumbnail" />
                               ) : isVideo ? (
                                 <>
                                   <img src="https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800" alt={file.name} className="suggested-card-thumbnail" />
@@ -1619,26 +1569,7 @@ const Home = () => {
               {/* Toolbar Section (View toggles and New Folder) */}
               <div className="toolbar-row">
                 <div className="action-bar-left" style={{ display: 'flex', gap: '0.5rem' }}>
-                  {activeTab === 'all' && (
-                    <button className="new-folder-btn" onClick={() => setIsCreateFolderOpen(true)}>
-                      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                      </svg>
-                      New Folder
-                    </button>
-                  )}
-                  <button className="action-btn upload" onClick={() => {
-                    if (!user?.isMegaLinked) {
-                      setIsMegaModalOpen(true);
-                      return;
-                    }
-                    document.getElementById('file-upload-input').click();
-                  }} style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
-                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '0.35rem' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                    </svg>
-                    Upload File
-                  </button>
+                  {/* Upload button removed per user request */}
                 </div>
                 
                 <div className="view-toggle-btns">
@@ -1812,6 +1743,20 @@ const Home = () => {
                                     className="list-action-btn"
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      setAssetToRename(file);
+                                      setRenameInput(file.name);
+                                      setIsRenameModalOpen(true);
+                                    }}
+                                    title="Rename"
+                                  >
+                                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                    </svg>
+                                  </button>
+                                  <button 
+                                    className="list-action-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
                                       setShareAsset(file);
                                       setPublicAccess(file.publicLinkAccess || 'restricted');
                                       setShareEmail('');
@@ -1943,7 +1888,7 @@ const Home = () => {
                                       <span className="video-duration">Video</span>
                                     </>
                                   ) : file.type && file.type.startsWith('image/') ? (
-                                    <img src={getFileUrl(file.url)} alt={file.name} className="file-thumbnail" />
+                                    <img src={getFileUrl(file.url)} crossOrigin="use-credentials" alt={file.name} className="file-thumbnail" />
                                   ) : file.type === 'application/pdf' ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-secondary)' }}>
                                       <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="#e53935" strokeWidth="1.5">
@@ -1989,6 +1934,20 @@ const Home = () => {
                                       </svg>
                                       Download
                                     </a>
+                                    <button 
+                                      className="overlay-action-btn" 
+                                      onClick={(e) => { 
+                                        e.stopPropagation(); 
+                                        setAssetToRename(file);
+                                        setRenameInput(file.name);
+                                        setIsRenameModalOpen(true);
+                                      }}
+                                    >
+                                      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                      </svg>
+                                      Rename
+                                    </button>
                                     <button className="overlay-action-btn delete" onClick={(e) => { e.stopPropagation(); deleteAsset(file._id); }}>
                                       <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -2441,37 +2400,31 @@ const Home = () => {
       {/* ───────────────────────────────────────────────────────────────────────
          4. Create Folder Modal Dialog
          ─────────────────────────────────────────────────────────────────────── */}
-      {isCreateFolderOpen && (
-        <div className="modal-overlay" onClick={() => setIsCreateFolderOpen(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+      {/* Rename Modal */}
+      {isRenameModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsRenameModalOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <span className="modal-title">Create Folder</span>
-              <button className="modal-close-btn" onClick={() => setIsCreateFolderOpen(false)}>×</button>
+              <h3>Rename</h3>
+              <button className="close-btn" onClick={() => setIsRenameModalOpen(false)}>×</button>
             </div>
-            <form onSubmit={handleCreateFolder}>
-              <div className="modal-body">
-                <div className="form-group">
-                  <label className="form-label" htmlFor="folderName">Folder Name</label>
-                  <input
-                    type="text"
-                    id="folderName"
-                    className="form-input"
-                    placeholder="New Folder"
-                    value={folderNameInput}
-                    onChange={(e) => setFolderNameInput(e.target.value)}
-                    autoFocus
-                    required
-                  />
-                </div>
-              </div>
-              <div className="form-actions">
-                <button type="button" className="btn-secondary" onClick={() => setIsCreateFolderOpen(false)}>Cancel</button>
-                <button type="submit" className="btn-primary">Create</button>
+            <form onSubmit={handleRenameAsset} className="folder-form">
+              <input 
+                type="text" 
+                placeholder="New name..." 
+                value={renameInput}
+                onChange={(e) => setRenameInput(e.target.value)}
+                autoFocus
+              />
+              <div className="modal-actions">
+                <button type="button" className="cancel-btn" onClick={() => setIsRenameModalOpen(false)}>Cancel</button>
+                <button type="submit" className="create-btn" disabled={!renameInput.trim()}>Rename</button>
               </div>
             </form>
           </div>
         </div>
       )}
+
 
       {/* ───────────────────────────────────────────────────────────────────────
          5. Access Delegation (Sharing Permissions) Modal
@@ -2592,14 +2545,7 @@ const Home = () => {
       {/* ───────────────────────────────────────────────────────────────────────
          Move Modal
          ─────────────────────────────────────────────────────────────────────── */}
-      {isMoveModalOpen && (
-        <MoveModal 
-          folders={files.filter(f => f.isFolder)}
-          currentFolderId={currentFolderId}
-          onClose={() => setIsMoveModalOpen(false)}
-          onMove={handleBulkMove}
-        />
-      )}
+
 
     </div>
   );

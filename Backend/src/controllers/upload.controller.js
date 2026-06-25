@@ -129,6 +129,7 @@ async function finalizeUpload(req, res) {
         // Upload to MEGA
         let megaHandle = "";
         let finalUrl = "";
+
         try {
             const fileData = fs.readFileSync(finalFilePath);
             megaHandle = await megaService.uploadFile(req.user, name, size, fileData);
@@ -153,7 +154,6 @@ async function finalizeUpload(req, res) {
             summary: analysis.summary || "",
             colors: analysis.colors || [],
             resolution: analysis.resolution || "Unknown",
-            parentFolderId: (parentFolderId && parentFolderId !== 'null' && parentFolderId !== 'undefined') ? parentFolderId : null,
             mimeType: type,
             isFolder: false
         });

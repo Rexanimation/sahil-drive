@@ -136,7 +136,7 @@ const FileViewer = ({ asset, onClose, getFileUrl }) => {
     }
 
     if (asset.type?.startsWith('video/')) {
-      return <video src={streamUrl} controls autoPlay style={{ width: '100%', maxHeight: '100%', outline: 'none' }} />;
+      return <video src={streamUrl} crossOrigin="use-credentials" controls autoPlay style={{ width: '100%', maxHeight: '100%', outline: 'none' }} />;
     }
 
     if (asset.type?.startsWith('audio/')) {
@@ -145,7 +145,7 @@ const FileViewer = ({ asset, onClose, getFileUrl }) => {
           <svg width="64" height="64" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1" style={{ color: 'var(--brand-primary)' }}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
           </svg>
-          <audio src={streamUrl} controls autoPlay style={{ width: '80%' }} />
+          <audio src={streamUrl} crossOrigin="use-credentials" controls autoPlay style={{ width: '80%' }} />
         </div>
       );
     }
@@ -163,6 +163,7 @@ const FileViewer = ({ asset, onClose, getFileUrl }) => {
           <img 
             ref={imgRef}
             src={streamUrl} 
+            crossOrigin="use-credentials"
             alt={asset.name} 
             style={{ 
               width: '100%', 

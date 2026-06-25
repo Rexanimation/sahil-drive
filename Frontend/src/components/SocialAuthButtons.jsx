@@ -80,6 +80,18 @@ export default function SocialAuthButtons({ onSuccess, onError, setSubmitting, d
           }
         },
       });
+      
+      const btnContainer = document.getElementById("googleSignInDiv");
+      if (btnContainer) {
+        window.google.accounts.id.renderButton(btnContainer, { 
+          theme: "filled_black", 
+          size: "large", 
+          type: "standard", 
+          shape: "rectangular", 
+          text: "signin_with",
+          width: 360
+        });
+      }
     };
 
     // Load the library if needed
@@ -106,11 +118,8 @@ export default function SocialAuthButtons({ onSuccess, onError, setSubmitting, d
   }, []); // Empty dependency array
 
   return (
-    <div className="sso-buttons">
-      <button type="button" className="sso-btn" onClick={handleGoogleClick} disabled={disabled}>
-        <GoogleIcon />
-        Google
-      </button>
+    <div className="sso-buttons" style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: '10px' }}>
+      <div id="googleSignInDiv"></div>
     </div>
   );
 }

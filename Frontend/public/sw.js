@@ -42,6 +42,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Skip Google Auth endpoints (Service Workers break GSI cross-origin flows)
+  if (url.hostname.includes('google.com')) {
+    return;
+  }
+
   // Skip Vite dev dependencies
   if (url.pathname.includes('/node_modules/') || url.pathname.includes('.vite')) {
     return;

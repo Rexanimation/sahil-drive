@@ -47,16 +47,7 @@ const assetSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
-    // Google Drive structures
-    isFolder: {
-        type: Boolean,
-        default: false
-    },
-    parentFolderId: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'asset',
-        default: null
-    },
+
     mimeType: {
         type: String,
         default: ""

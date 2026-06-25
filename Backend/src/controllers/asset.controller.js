@@ -47,8 +47,6 @@ async function uploadAsset(req, res) {
             url = `/uploads/${req.file.filename}`;
         }
 
-        const parentFolderId = req.body.parentFolderId;
-
         // Call Gemini to generate tags, summary, dominant colors, and resolution
         const analysis = await aiService.analyzeAsset(name, type, size);
 
@@ -64,7 +62,6 @@ async function uploadAsset(req, res) {
             summary: analysis.summary || "",
             colors: analysis.colors || [],
             resolution: analysis.resolution || "Unknown",
-            parentFolderId: (parentFolderId && parentFolderId !== 'null' && parentFolderId !== 'undefined') ? parentFolderId : null,
             mimeType: type
         });
 
@@ -107,13 +104,6 @@ async function getAssets(req, res) {
                 { name: { $regex: search, $options: 'i' } },
                 { tags: { $regex: search, $options: 'i' } }
             ];
-        } else {
-            // Folder level filtering
-            if (parentFolderId && parentFolderId !== 'null' && parentFolderId !== 'undefined') {
-                query.parentFolderId = parentFolderId;
-            } else {
-                query.parentFolderId = null;
-            }
         }
 
         const assets = await assetModel.find(query).sort({ createdAt: -1 });
@@ -221,42 +211,6 @@ async function deleteAsset(req, res) {
     }
 }
 
-async function moveAssets(req, res) {
-    try {
-        const { assetIds, targetFolderId } = req.body;
-        const user = req.user;
-
-        if (!assetIds || !Array.isArray(assetIds) || assetIds.length === 0) {
-            return res.status(400).json({ message: "No assets selected to move" });
-        }
-
-        // Validate target folder if it's not root
-        const newParentId = (targetFolderId && targetFolderId !== 'root' && targetFolderId !== 'null' && targetFolderId !== 'undefined') ? targetFolderId : null;
-        
-        if (newParentId) {
-            const targetFolder = await assetModel.findOne({ _id: newParentId, userId: user.id, isFolder: true });
-            if (!targetFolder) {
-                return res.status(404).json({ message: "Target folder not found" });
-            }
-        }
-
-        // Prevent moving a folder into itself or its own children
-        // For simplicity in MVP, we just run the update. A full check would require recursively checking parent chain.
-        // Update all selected assets
-        await assetModel.updateMany(
-            { _id: { $in: assetIds }, userId: user.id },
-            { $set: { parentFolderId: newParentId } }
-        );
-
-        res.status(200).json({
-            message: "Assets moved successfully"
-        });
-    } catch (err) {
-        console.error("Move Assets error:", err);
-        res.status(500).json({ message: "Internal server error" });
-    }
-}
-
 async function getStorageSummary(req, res) {
     try {
         const userRecord = await userModel.findById(req.user.id);
@@ -265,7 +219,7 @@ async function getStorageSummary(req, res) {
         }
         // Auto-correct storage desync issues
         const storageResult = await assetModel.aggregate([
-            { $match: { userId: userRecord._id, isFolder: false } },
+            { $match: { userId: userRecord._id } },
             { $group: { _id: null, totalBytes: { $sum: "$size" } } }
         ]);
         const actualStorageUsed = storageResult.length > 0 ? storageResult[0].totalBytes : 0;
@@ -306,10 +260,7 @@ async function getAnalytics(req, res) {
         const now = new Date();
 
         assets.forEach(asset => {
-            if (asset.isFolder) {
-                totalFolders++;
-            } else {
-                totalFiles++;
+            totalFiles++;
                 if (asset.type.startsWith('video/')) {
                     videoSize += asset.size;
                 } else if (asset.type.startsWith('image/')) {
@@ -318,14 +269,13 @@ async function getAnalytics(req, res) {
                     otherSize += asset.size;
                 }
 
-                // calculate day difference
-                const assetDate = new Date(asset.createdAt);
-                const diffTime = now.getTime() - assetDate.getTime();
-                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                
-                if (diffDays < 7 && diffDays >= 0) {
-                    weeklyUploads[6 - diffDays] += asset.size;
-                }
+            // calculate day difference
+            const assetDate = new Date(asset.createdAt);
+            const diffTime = now.getTime() - assetDate.getTime();
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays < 7 && diffDays >= 0) {
+                weeklyUploads[6 - diffDays] += asset.size;
             }
         });
 
@@ -407,37 +357,6 @@ Please answer questions specifically about this file. Keep the answers concise a
         });
     } catch (err) {
         console.error("Chat Asset error:", err);
-        res.status(500).json({ message: "Internal server error" });
-    }
-}
-
-async function createFolder(req, res) {
-    try {
-        const user = req.user;
-        const { name, parentFolderId } = req.body;
-
-        if (!name) {
-            return res.status(400).json({ message: "Folder name is required" });
-        }
-
-        const folder = await assetModel.create({
-            user: user._id,
-            userId: user._id,
-            name,
-            type: "application/vnd.google-apps.folder",
-            mimeType: "application/vnd.google-apps.folder",
-            isFolder: true,
-            parentFolderId: (parentFolderId && parentFolderId !== 'null' && parentFolderId !== 'undefined') ? parentFolderId : null,
-            size: 0,
-            url: ""
-        });
-
-        res.status(201).json({
-            message: "Folder created successfully",
-            folder
-        });
-    } catch (err) {
-        console.error("Create Folder error:", err);
         res.status(500).json({ message: "Internal server error" });
     }
 }
@@ -537,6 +456,33 @@ async function streamAsset(req, res) {
     }
 }
 
+async function renameAsset(req, res) {
+    try {
+        const { id } = req.params;
+        const { newName } = req.body;
+        
+        if (!newName) {
+            return res.status(400).json({ message: "New name is required" });
+        }
+
+        const asset = await assetModel.findOne({ _id: id, userId: req.user.id });
+        if (!asset) {
+            return res.status(404).json({ message: "Asset not found" });
+        }
+
+        asset.name = newName;
+        await asset.save();
+
+        res.status(200).json({
+            message: "Asset renamed successfully",
+            asset
+        });
+    } catch (err) {
+        console.error("Rename Asset error:", err);
+        res.status(500).json({ message: "Internal server error" });
+    }
+}
+
 module.exports = {
     uploadAsset,
     getAssets,
@@ -545,7 +491,6 @@ module.exports = {
     getStorageSummary,
     getAnalytics,
     chatAsset,
-    createFolder,
     streamAsset,
-    moveAssets
+    renameAsset
 };
