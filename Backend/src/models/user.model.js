@@ -53,6 +53,10 @@ const userSchema = new mongoose.Schema({
     storageQuota: {
         type: Number,
         default: 20 * 1024 * 1024 * 1024 // 20 GB
+    },
+    refreshToken: {
+        type: String,
+        default: null
     }
 },
     {

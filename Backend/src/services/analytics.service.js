@@ -56,16 +56,30 @@ async function getStorageAnalytics(userId) {
         .slice(0, 5)
         .map(f => ({ name: f.name, size: f.size, date: f.createdAt }));
 
-    // Mock storage trend for now, ideally group by date
-    const storageTrend = [
-        { name: 'Mon', usage: usedStorage * 0.8 },
-        { name: 'Tue', usage: usedStorage * 0.85 },
-        { name: 'Wed', usage: usedStorage * 0.9 },
-        { name: 'Thu', usage: usedStorage * 0.95 },
-        { name: 'Fri', usage: usedStorage * 0.98 },
-        { name: 'Sat', usage: usedStorage * 0.99 },
-        { name: 'Sun', usage: usedStorage }
-    ];
+    // Calculate real storage velocity (uploads per day for last 7 days in MB)
+    const weeklyUploads = Array(7).fill(0);
+    const now = new Date();
+    
+    assets.forEach(asset => {
+        const assetDate = new Date(asset.createdAt);
+        const diffTime = now.getTime() - assetDate.getTime();
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        
+        if (diffDays < 7 && diffDays >= 0) {
+            weeklyUploads[6 - diffDays] += (asset.size || 0);
+        }
+    });
+
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const storageTrend = [];
+    for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(now.getDate() - i);
+        storageTrend.push({
+            name: days[d.getDay()],
+            uploads: Number((weeklyUploads[6 - i] / (1024 * 1024)).toFixed(2)) // MB
+        });
+    }
 
     return {
         storage: {

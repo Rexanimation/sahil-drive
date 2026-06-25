@@ -151,6 +151,13 @@ async function syncDeletions(user) {
         
         for (const asset of dbAssets) {
             if (!megaHandles.includes(asset.megaHandle)) {
+                // MEGA's internal file tree can take a few seconds to update after an upload.
+                // To avoid deleting newly uploaded files, we ensure the file is at least 10 mins old.
+                const ageInMs = Date.now() - new Date(asset.createdAt).getTime();
+                if (ageInMs < 10 * 60 * 1000) {
+                    continue;
+                }
+
                 console.log(`[MEGA Sync] File ${asset.name} was deleted directly from MEGA. Removing from DB.`);
                 deletedSize += (asset.size || 0);
                 await assetModel.findByIdAndDelete(asset._id);

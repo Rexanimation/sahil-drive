@@ -1570,10 +1570,52 @@ body {
   }
 }
 
+.mobile-menu-btn {
+  display: none;
+  background: transparent;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  padding: 5px;
+}
+
+.sidebar-overlay {
+  display: none;
+}
+
 @media (max-width: 768px) {
-  .sidebar-left {
-    display: none; /* simple mobile drawer toggle can be added if needed */
+  .mobile-menu-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 10px;
   }
+
+  .sidebar-left {
+    position: fixed;
+    top: 0;
+    left: -100%;
+    z-index: 1000;
+    transition: left 0.3s ease;
+  }
+
+  .sidebar-left.mobile-open {
+    left: 0;
+    box-shadow: 2px 0 20px rgba(0, 0, 0, 0.8);
+  }
+
+  .sidebar-overlay.mobile-open {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(2px);
+    z-index: 999;
+  }
+
   .metadata-grid {
     grid-template-columns: 1fr;
   }

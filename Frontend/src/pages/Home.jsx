@@ -49,6 +49,7 @@ const Home = () => {
   const [dragActive, setDragActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAiOpen, setIsAiOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [socket, setSocket] = useState(null);
   const [storageBytes, setStorageBytes] = useState(0);
@@ -176,6 +177,19 @@ const Home = () => {
       alert(err.response?.data?.message || "Failed to link MEGA account");
     } finally {
       setMegaLinking(false);
+    }
+  };
+
+  const handleUnlinkMega = async () => {
+    const confirmUnlink = window.confirm("Are you sure you want to disconnect your MEGA account? You will lose access to the 20GB of storage.");
+    if (!confirmUnlink) return;
+
+    try {
+      await axios.post(`${API_URL}/api/auth/unlink-mega`, {}, { withCredentials: true });
+      setUser(prev => ({ ...prev, isMegaLinked: false }));
+      alert("MEGA account disconnected successfully.");
+    } catch (err) {
+      alert("Failed to disconnect MEGA account.");
     }
   };
 
@@ -693,6 +707,13 @@ const Home = () => {
   };
 
   // ─── Logout ────────────────────────────────────────────────────────────────
+  const handleTabChange = (tabName) => {
+    dispatch(setActiveAssetContext(null));
+    if (tabName === 'all') navigateToFolder(null);
+    setActiveTab(tabName);
+    setIsMobileSidebarOpen(false);
+  };
+
   const handleLogout = async () => {
     try {
       await axios.post(`${API_URL}/api/auth/logout`, {}, { withCredentials: true });
@@ -875,7 +896,13 @@ const Home = () => {
       {/* ───────────────────────────────────────────────────────────────────────
          1. Global Sidebar (Left Column)
          ─────────────────────────────────────────────────────────────────────── */}
-      <aside className="sidebar-left" aria-label="Global sidebar">
+      {/* Mobile Sidebar Overlay */}
+      <div 
+        className={`sidebar-overlay ${isMobileSidebarOpen ? 'mobile-open' : ''}`}
+        onClick={() => setIsMobileSidebarOpen(false)}
+      ></div>
+
+      <aside className={`sidebar-left ${isMobileSidebarOpen ? 'mobile-open' : ''}`} aria-label="Global sidebar">
         <div>
           <div className="sidebar-header">
             <div className="logo-icon-drive">
@@ -907,7 +934,7 @@ const Home = () => {
           <nav className="sidebar-nav">
             <button
               className={`sidebar-nav-item ${activeTab === 'dashboard' && !activeAsset ? 'active' : ''}`}
-              onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('dashboard'); }}
+              onClick={() => handleTabChange('dashboard')}
             >
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
@@ -916,7 +943,7 @@ const Home = () => {
             </button>
             <button
               className={`sidebar-nav-item ${activeTab === 'analytics' && !activeAsset ? 'active' : ''}`}
-              onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('analytics'); }}
+              onClick={() => handleTabChange('analytics')}
             >
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
@@ -924,8 +951,17 @@ const Home = () => {
               Analytics
             </button>
             <button
+              className={`sidebar-nav-item ${activeTab === 'mega-link' && !activeAsset ? 'active' : ''}`}
+              onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('mega-link'); setIsMobileSidebarOpen(false); }}
+            >
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              Mega Link
+            </button>
+            <button
               className={`sidebar-nav-item ${activeTab === 'all' && !activeAsset ? 'active' : ''}`}
-              onClick={() => { dispatch(setActiveAssetContext(null)); navigateToFolder(null); setActiveTab('all'); }}
+              onClick={() => handleTabChange('all')}
             >
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -934,7 +970,7 @@ const Home = () => {
             </button>
             <button
               className={`sidebar-nav-item ${activeTab === 'favorites' && !activeAsset ? 'active' : ''}`}
-              onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('favorites'); }}
+              onClick={() => handleTabChange('favorites')}
             >
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.907c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.906a1 1 0 00.95-.69l1.519-4.674z" />
@@ -950,35 +986,31 @@ const Home = () => {
               </svg>
               Shared
             </button>
-            <button
-              className={`sidebar-nav-item ${activeTab === 'trash' && !activeAsset ? 'active' : ''}`}
-              onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('trash'); }}
-            >
-              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              Trash
-            </button>
+
           </nav>
         </div>
 
         <div className="sidebar-footer">
-          <div className="storage-section" style={{ marginBottom: '0.75rem' }}>
-            <div className="storage-header">
-              <span>Cloud Utilization</span>
-              <span>{getStorageGBUsed()} / 20 GB</span>
-            </div>
-            <div className="storage-bar-bg">
-              <div
-                className="storage-bar-fill"
-                style={{ width: `${Math.min(100, (storageBytes / (20 * 1024 * 1024 * 1024)) * 100)}%` }}
-              ></div>
-            </div>
-          </div>
+          {user?.isMegaLinked && (
+            <>
+              <div className="storage-section" style={{ marginBottom: '0.75rem' }}>
+                <div className="storage-header">
+                  <span>Cloud Utilization</span>
+                  <span>{getStorageGBUsed()} / 20 GB</span>
+                </div>
+                <div className="storage-bar-bg">
+                  <div
+                    className="storage-bar-fill"
+                    style={{ width: `${Math.min(100, (storageBytes / (20 * 1024 * 1024 * 1024)) * 100)}%` }}
+                  ></div>
+                </div>
+              </div>
 
-          <button className="gradient-btn" style={{ width: '100%', marginBottom: '1rem', borderRadius: '12px', fontSize: '0.85rem' }} onClick={() => alert("Premium upgrade under construction.")}>
-            Upgrade Storage
-          </button>
+              <button className="gradient-btn" style={{ width: '100%', marginBottom: '1rem', borderRadius: '12px', fontSize: '0.85rem' }} onClick={() => alert("Premium upgrade under construction.")}>
+                Upgrade Storage
+              </button>
+            </>
+          )}
 
           <button className="sidebar-footer-btn" onClick={() => alert("Settings Integration Coming Soon!")}>
             <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -1003,24 +1035,36 @@ const Home = () => {
         
         {/* Top Header Bar */}
         <header className="top-bar">
-          <div className="search-container">
-            <svg className="search-icon-svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search your digital universe…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          <div style={{ display: 'flex', alignItems: 'center', flex: 1, gap: '10px', minWidth: 0 }}>
+            <button 
+              className="mobile-menu-btn" 
+              onClick={() => setIsMobileSidebarOpen(true)}
+              aria-label="Open menu"
+              style={{ flexShrink: 0 }}
+            >
+              <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <div className="search-container" style={{ minWidth: '100px' }}>
+              <svg className="search-icon-svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                className="search-input"
+                placeholder="Search your digital universe…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
           </div>
 
-          <div className="top-bar-actions">
+          <div className="top-bar-actions" style={{ flexShrink: 0 }}>
             <button 
               className={`gradient-btn ${isAiOpen ? 'active' : ''}`} 
               onClick={() => setIsAiOpen(!isAiOpen)}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: isAiOpen ? 'linear-gradient(135deg, #4B5563, #374151)' : 'linear-gradient(135deg, #8B5CF6, #3B82F6)', color: '#fff', border: 'none', padding: '0 1rem', height: '36px', borderRadius: '8px', cursor: 'pointer', fontWeight: '500', marginRight: '0.5rem' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: isAiOpen ? 'linear-gradient(135deg, #4B5563, #374151)' : 'linear-gradient(135deg, #8B5CF6, #3B82F6)', color: '#fff', border: 'none', padding: '0 1rem', height: '36px', borderRadius: '8px', cursor: 'pointer', fontWeight: '500', marginRight: '0.5rem', whiteSpace: 'nowrap' }}
             >
               <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -1220,6 +1264,51 @@ const Home = () => {
           ) : activeTab === 'analytics' ? (
             /* ─── CASE C: Dynamic Analytics Workspace ─────────────────────── */
             <AnalyticsEngine socket={socket} />
+          ) : activeTab === 'mega-link' ? (
+            <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', color: 'white' }}>
+              <div style={{ background: 'var(--surface-secondary)', padding: '3rem', borderRadius: '16px', textAlign: 'center', maxWidth: '500px', width: '100%', border: '1px solid var(--border-subtle)' }}>
+                {user?.isMegaLinked ? (
+                  <>
+                    <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(76, 175, 80, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
+                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#4CAF50" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                      </svg>
+                    </div>
+                    <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem', color: 'white' }}>MEGA Account Connected</h2>
+                    <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', lineHeight: '1.6' }}>
+                      Your Sahil Drive is actively synced with your MEGA account. Your files are securely encrypted and stored with 20GB of cloud capacity.
+                    </p>
+                    <button 
+                      onClick={handleUnlinkMega}
+                      className="action-btn"
+                      style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', border: '1px solid rgba(239, 68, 68, 0.2)', width: '100%', padding: '0.8rem' }}
+                    >
+                      Disconnect Account
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(255, 255, 255, 0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
+                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--brand-primary)' }}>
+                        <path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
+                      </svg>
+                    </div>
+                    <h2 style={{ fontSize: '1.5rem', marginBottom: '1rem', color: 'white' }}>No MEGA Account Linked</h2>
+                    <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem', lineHeight: '1.6' }}>
+                      Link your MEGA account to unlock 20GB of secure cloud storage for your digital universe.
+                    </p>
+                    <button 
+                      onClick={() => setIsMegaModalOpen(true)}
+                      className="gradient-btn"
+                      style={{ width: '100%', padding: '0.8rem', borderRadius: '8px' }}
+                    >
+                      Connect MEGA Account
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
           ) : activeTab === 'dashboard' ? (
             <div className="dashboard-view">
               <div className="dashboard-welcome-banner">
@@ -2091,7 +2180,10 @@ const Home = () => {
                 </div>
                 <div style={{ marginTop: '1rem', textAlign: 'center' }}>
                   <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Don't have an account? </span>
-                  <a href="https://mega.nz/register" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand-primary)', fontSize: '0.85rem', textDecoration: 'none' }}>Create one here</a>
+                  <a href="https://mega.nz/register" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand-primary)', fontSize: '0.85rem', textDecoration: 'none', fontWeight: '500' }}>Create one here</a>
+                  <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#9CA3AF', background: 'rgba(255,255,255,0.05)', padding: '0.5rem', borderRadius: '6px' }}>
+                    <strong>Note:</strong> This opens MEGA in a new tab. Once you have created and verified your account, <strong>return to this tab</strong> and enter your credentials above to connect!
+                  </div>
                 </div>
               </div>
               <div className="modal-footer">
