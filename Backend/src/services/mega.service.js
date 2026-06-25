@@ -94,18 +94,31 @@ async function deleteFile(user, handle) {
 }
 
 /**
- * Stream a file decrypted directly from the user's personal MEGA account
- * @param {Object} user - The authenticated user object
- * @param {string} handle - MEGA node handle
- * @returns {Promise<ReadableStream>} - Readable decryption stream
+ * Get a decryption stream from a MEGA file handle
+ * @param {Object} user - The user object containing credentials
+ * @param {string} handle - The MEGA file handle
+ * @param {number} [start] - Starting byte offset
+ * @param {number} [end] - Ending byte offset
+ * @returns {Promise<{ stream: ReadableStream, size: number }>} - Readable decryption stream and total size
  */
-async function getFileStream(user, handle) {
+async function getFileStream(user, handle, start, end) {
     const storage = await getStorageForUser(user);
     const file = storage.files[handle];
     if (!file) {
         throw new Error("File not found in your MEGA storage");
     }
-    return file.download();
+    
+    // megajs allows passing { start, end } to download() or read() for partial streams
+    const options = {};
+    if (start !== undefined && end !== undefined) {
+        options.start = start;
+        options.end = end;
+    }
+
+    return { 
+        stream: file.download(options), 
+        size: file.size || 0 
+    };
 }
 
 /**

@@ -449,8 +449,28 @@ const Home = () => {
 
   const handleDropOnFolder = async (e, targetFolderId) => {
     e.preventDefault();
+    e.stopPropagation(); // Prevent the global drop handler from firing
     e.currentTarget.classList.remove('drag-over');
     
+    // 1. Check if files were dropped from the OS
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      if (droppedFiles.length === 0) return;
+
+      if (!user?.isMegaLinked) {
+        setIsMegaModalOpen(true);
+        return;
+      }
+      
+      // Temporarily set currentFolderId for uploadSingleFile, or just pass it to uploadSingleFile
+      // We will need to update uploadSingleFile to accept a folderId argument or we can just use a local loop
+      for (const file of droppedFiles) {
+        await uploadSingleFile(file, droppedFiles.length > 1, targetFolderId);
+      }
+      return;
+    }
+
+    // 2. Otherwise, check if it's an internal move of selected assets
     try {
       const data = e.dataTransfer.getData('text/plain');
       if (!data) return;
@@ -504,8 +524,10 @@ const Home = () => {
     fileInputRef.current?.click();
   };
 
-  const uploadSingleFile = async (file, isBulk = false) => {
+  const uploadSingleFile = async (file, isBulk = false, folderIdOverride = null) => {
     if (!file) return;
+
+    const targetFolderId = folderIdOverride !== null ? folderIdOverride : currentFolderId;
 
     const trackingId = Math.random().toString(36).substring(7);
     const newUpload = {
@@ -528,8 +550,8 @@ const Home = () => {
         // Standard Single File Upload Pipeline
         const formData = new FormData();
         formData.append('file', file);
-        if (currentFolderId) {
-          formData.append('parentFolderId', currentFolderId);
+        if (targetFolderId) {
+          formData.append('parentFolderId', targetFolderId);
         }
 
         const response = await axios.post(`${API_URL}/api/assets/upload`, formData, {
@@ -617,7 +639,7 @@ const Home = () => {
           name: file.name,
           type: file.type,
           size: file.size,
-          parentFolderId: currentFolderId
+          parentFolderId: targetFolderId
         }, { withCredentials: true });
 
         const newAsset = finalizeRes.data.asset;

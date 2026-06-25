@@ -1,8 +1,37 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import Editor from '@monaco-editor/react';
+
+// --- Language Detection ---
+const getLanguage = (asset) => {
+  const type = asset.type || '';
+  const name = asset.name || '';
+  if (type.includes('json') || name.endsWith('.json')) return 'json';
+  if (type.includes('javascript') || name.endsWith('.js')) return 'javascript';
+  if (type.includes('typescript') || name.endsWith('.ts')) return 'typescript';
+  if (type.includes('html') || name.endsWith('.html')) return 'html';
+  if (type.includes('css') || name.endsWith('.css')) return 'css';
+  if (type.includes('python') || name.endsWith('.py')) return 'python';
+  if (type.includes('java') || name.endsWith('.java')) return 'java';
+  if (type.includes('cpp') || type.includes('c++') || name.endsWith('.cpp')) return 'cpp';
+  if (type.includes('csharp') || name.endsWith('.cs')) return 'csharp';
+  if (type.includes('xml') || name.endsWith('.xml')) return 'xml';
+  if (type.includes('markdown') || name.endsWith('.md')) return 'markdown';
+  return 'plaintext'; 
+};
+
+const isCodeOrText = (asset) => {
+  const type = asset.type || '';
+  const name = asset.name || '';
+  return type.startsWith('text/') || 
+         type.includes('json') || 
+         type.includes('xml') || 
+         type.includes('javascript') ||
+         name.match(/\.(txt|md|js|ts|jsx|tsx|json|html|css|py|java|cpp|c|cs|xml|yml|yaml|csv)$/i);
+};
 
 const FileViewer = ({ asset, onClose, getFileUrl }) => {
-  const [blobUrl, setBlobUrl] = useState(null);
+  const [textContent, setTextContent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [scale, setScale] = useState(1);
@@ -11,41 +40,35 @@ const FileViewer = ({ asset, onClose, getFileUrl }) => {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   
   const imgRef = useRef(null);
+  const streamUrl = getFileUrl(asset.url);
 
   useEffect(() => {
     if (!asset) return;
-    let objectUrl = null;
 
-    const fetchBlob = async () => {
-      try {
-        setLoading(true);
-        setError(false);
-        const url = getFileUrl(asset.url);
-        
-        // Fetch as blob with credentials so cookies are sent
-        const response = await axios.get(url, {
-          responseType: 'blob',
-          withCredentials: true
-        });
-
-        objectUrl = URL.createObjectURL(response.data);
-        setBlobUrl(objectUrl);
-      } catch (err) {
-        console.error("Failed to load file preview:", err);
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchBlob();
-
-    return () => {
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
-  }, [asset, getFileUrl]);
+    if (isCodeOrText(asset)) {
+      // Fetch text content for code/text files
+      const fetchText = async () => {
+        try {
+          setLoading(true);
+          setError(false);
+          const response = await axios.get(streamUrl, {
+            responseType: 'text',
+            withCredentials: true
+          });
+          setTextContent(response.data);
+        } catch (err) {
+          console.error("Failed to load text preview:", err);
+          setError(true);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchText();
+    } else {
+      // For media/pdfs, we stream directly, no need to load blobs.
+      setLoading(false);
+    }
+  }, [asset, streamUrl]);
 
   // Image Zoom & Pan Handlers
   const handleWheel = (e) => {
@@ -81,14 +104,13 @@ const FileViewer = ({ asset, onClose, getFileUrl }) => {
 
   const handleDownload = (e) => {
     e.stopPropagation();
-    if (blobUrl) {
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = asset.name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    }
+    const a = document.createElement('a');
+    a.href = streamUrl;
+    a.download = asset.name;
+    a.target = "_blank";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   };
 
   const renderContent = () => {
@@ -102,19 +124,30 @@ const FileViewer = ({ asset, onClose, getFileUrl }) => {
       );
     }
 
-    if (error || !blobUrl) {
+    if (error) {
       return (
         <div style={{ color: '#fff', textAlign: 'center', padding: '2rem' }}>
           <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1" style={{ marginBottom: '1rem', color: '#ef4444' }}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
-          <p>Failed to load file securely.</p>
+          <p>Preview unavailable. File might be corrupted or storage is inaccessible.</p>
         </div>
       );
     }
 
     if (asset.type?.startsWith('video/')) {
-      return <video src={blobUrl} controls autoPlay style={{ width: '100%', maxHeight: '100%', outline: 'none' }} />;
+      return <video src={streamUrl} controls autoPlay style={{ width: '100%', maxHeight: '100%', outline: 'none' }} />;
+    }
+
+    if (asset.type?.startsWith('audio/')) {
+      return (
+        <div style={{ width: '100%', padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem' }}>
+          <svg width="64" height="64" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1" style={{ color: 'var(--brand-primary)' }}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+          </svg>
+          <audio src={streamUrl} controls autoPlay style={{ width: '80%' }} />
+        </div>
+      );
     }
 
     if (asset.type?.startsWith('image/')) {
@@ -129,7 +162,7 @@ const FileViewer = ({ asset, onClose, getFileUrl }) => {
         >
           <img 
             ref={imgRef}
-            src={blobUrl} 
+            src={streamUrl} 
             alt={asset.name} 
             style={{ 
               width: '100%', 
@@ -147,7 +180,26 @@ const FileViewer = ({ asset, onClose, getFileUrl }) => {
     }
 
     if (asset.type === 'application/pdf') {
-      return <iframe src={blobUrl} title={asset.name} width="100%" height="100%" frameBorder="0" style={{ backgroundColor: '#fff' }} />;
+      return <iframe src={streamUrl} title={asset.name} width="100%" height="100%" frameBorder="0" style={{ backgroundColor: '#fff' }} />;
+    }
+
+    if (isCodeOrText(asset)) {
+      return (
+        <Editor
+          height="100%"
+          width="100%"
+          theme="vs-dark"
+          language={getLanguage(asset)}
+          value={textContent}
+          options={{
+            readOnly: true,
+            minimap: { enabled: true },
+            scrollBeyondLastLine: false,
+            fontSize: 14,
+            wordWrap: 'on'
+          }}
+        />
+      );
     }
 
     return (
@@ -155,7 +207,8 @@ const FileViewer = ({ asset, onClose, getFileUrl }) => {
         <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1" style={{ marginBottom: '1rem' }}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
-        <p>Preview not available for this file type.</p>
+        <p>No preview available for this file type.</p>
+        <p style={{ fontSize: '0.8rem', color: 'var(--color-text-secondary)', marginTop: '0.5rem' }}>You can download the file to view it.</p>
       </div>
     );
   };
@@ -192,9 +245,8 @@ const FileViewer = ({ asset, onClose, getFileUrl }) => {
             <button 
               className="icon-action-btn" 
               onClick={handleDownload} 
-              disabled={!blobUrl}
               title="Download File"
-              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'var(--brand-primary)', padding: '0.3rem 0.75rem', borderRadius: '4px', border: 'none', opacity: blobUrl ? 1 : 0.5, color: '#fff', cursor: blobUrl ? 'pointer' : 'default' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'var(--brand-primary)', padding: '0.3rem 0.75rem', borderRadius: '4px', border: 'none', color: '#fff', cursor: 'pointer' }}
             >
               <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />

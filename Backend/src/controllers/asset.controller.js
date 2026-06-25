@@ -4,6 +4,7 @@ const megaService = require('../services/mega.service');
 const userModel = require('../models/user.model');
 const fs = require('fs');
 const path = require('path');
+const mime = require('mime-types');
 
 async function uploadAsset(req, res) {
     try {
@@ -14,7 +15,12 @@ async function uploadAsset(req, res) {
         }
 
         const name = req.file.originalname;
-        const type = req.file.mimetype;
+        // Fallback to strict mime-type detection if multer's guess is generic or missing
+        let type = req.file.mimetype;
+        if (!type || type === 'application/octet-stream') {
+            type = mime.lookup(name) || 'application/octet-stream';
+        }
+        
         const size = req.file.size;
         
         // Quota check
@@ -455,13 +461,63 @@ async function streamAsset(req, res) {
 
         if (asset.megaHandle) {
             try {
-                const stream = await megaService.getFileStream(req.user, asset.megaHandle);
-                res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(asset.name)}"`);
-                res.setHeader('Content-Type', asset.mimeType || 'application/octet-stream');
-                stream.pipe(res);
+                const range = req.headers.range;
+                let start, end;
+                
+                // Fast-fetch size if missing, but we expect it to be in asset.size
+                let fileSize = asset.size; 
+                
+                if (range) {
+                    const parts = range.replace(/bytes=/, "").split("-");
+                    start = parseInt(parts[0], 10);
+                    end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+                    
+                    if (start >= fileSize) {
+                        res.status(416).send('Requested range not satisfiable\n' + start + ' >= ' + fileSize);
+                        return;
+                    }
+
+                    const chunksize = (end - start) + 1;
+                    const { stream } = await megaService.getFileStream(req.user, asset.megaHandle, start, end);
+                    
+                    res.writeHead(206, {
+                        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+                        'Accept-Ranges': 'bytes',
+                        'Content-Length': chunksize,
+                        'Content-Type': asset.mimeType || 'application/octet-stream',
+                        'Content-Disposition': `inline; filename="${encodeURIComponent(asset.name)}"`,
+                        'Cache-Control': 'no-cache'
+                    });
+                    
+                    stream.on('error', (err) => {
+                        console.error("[MEGA] Range stream error:", err.message);
+                        if (!res.headersSent) res.status(500).end();
+                        else res.end();
+                    });
+                    
+                    stream.pipe(res);
+                } else {
+                    const { stream } = await megaService.getFileStream(req.user, asset.megaHandle);
+                    res.writeHead(200, {
+                        'Content-Length': fileSize,
+                        'Content-Type': asset.mimeType || 'application/octet-stream',
+                        'Content-Disposition': `inline; filename="${encodeURIComponent(asset.name)}"`,
+                        'Accept-Ranges': 'bytes',
+                        'Cache-Control': 'no-cache'
+                    });
+                    
+                    stream.on('error', (err) => {
+                        console.error("[MEGA] Full stream error:", err.message);
+                        if (!res.headersSent) res.status(500).end();
+                        else res.end();
+                    });
+                    
+                    stream.pipe(res);
+                }
             } catch (megaErr) {
                 console.error("[MEGA] Streaming failed:", megaErr.message);
-                res.status(500).json({ message: "Failed to stream file from cloud storage" });
+                if (!res.headersSent) res.status(500).json({ message: "Failed to stream file from cloud storage" });
+                else res.end();
             }
         } else if (asset.url.startsWith('/uploads/')) {
             const filePath = path.join(__dirname, '../../public', asset.url);
