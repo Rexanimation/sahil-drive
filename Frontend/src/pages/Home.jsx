@@ -5,6 +5,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import axios from 'axios';
 import { API_URL } from '../config';
 import '../styles/Dashboard.css';
+import AnalyticsEngine from '../components/AnalyticsEngine';
 
 import {
   setFiles,
@@ -47,7 +48,7 @@ const Home = () => {
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'all', 'image', 'video', 'favorites', 'shared'
   const [dragActive, setDragActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isAiOpen, setIsAiOpen] = useState(true);
+  const [isAiOpen, setIsAiOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [socket, setSocket] = useState(null);
   const [storageBytes, setStorageBytes] = useState(0);
@@ -133,13 +134,48 @@ const Home = () => {
   // Floating Upload Progress Monitor Queue
   const [activeUploads, setActiveUploads] = useState([]);
 
+  // MEGA Link Modal
+  const [isMegaModalOpen, setIsMegaModalOpen] = useState(false);
+  const [megaEmailInput, setMegaEmailInput] = useState('');
+  const [megaPasswordInput, setMegaPasswordInput] = useState('');
+  const [showMegaPassword, setShowMegaPassword] = useState(false);
+  const [megaLinking, setMegaLinking] = useState(false);
+  const [isMegaSuccessModalOpen, setIsMegaSuccessModalOpen] = useState(false);
+
+  // Preview Modal
+  const [previewAsset, setPreviewAsset] = useState(null);
+
   // ─── Fetch User & Assets ───────────────────────────────────────────────────
   const fetchUser = async () => {
     try {
       const res = await axios.get(`${API_URL}/api/auth/me`, { withCredentials: true });
       setUser(res.data.user);
+      if (res.data.user.megaError) {
+        alert("Your MEGA account is deleted or disconnected. Please link it again.");
+        setIsMegaModalOpen(true);
+      } else if (!res.data.user.isMegaLinked) {
+        setIsMegaModalOpen(true);
+      }
     } catch (err) {
       navigate('/login');
+    }
+  };
+
+  const handleMegaLink = async (e) => {
+    e.preventDefault();
+    setMegaLinking(true);
+    try {
+      await axios.post(`${API_URL}/api/auth/link-mega`, {
+        megaEmail: megaEmailInput,
+        megaPassword: megaPasswordInput
+      }, { withCredentials: true });
+      setIsMegaModalOpen(false);
+      setUser(prev => ({ ...prev, isMegaLinked: true }));
+      setIsMegaSuccessModalOpen(true);
+    } catch (err) {
+      alert(err.response?.data?.message || "Failed to link MEGA account");
+    } finally {
+      setMegaLinking(false);
     }
   };
 
@@ -217,6 +253,15 @@ const Home = () => {
         if (chatsList.length > 0 && !activeChatId) {
           dispatch(selectChat(chatsList[0]._id));
           getGeneralMessages(chatsList[0]._id);
+        } else if (chatsList.length === 0) {
+          // Auto create first chat session
+          axios.post(`${API_URL}/api/chat`, { title: "Chat Session #1" }, { withCredentials: true })
+            .then(res => {
+              const newChat = res.data.chat || res.data;
+              dispatch(startNewChat(newChat));
+              dispatch(selectChat(newChat._id));
+            })
+            .catch(e => console.error("Auto chat creation failed", e));
         }
       })
       .catch(err => {
@@ -229,9 +274,18 @@ const Home = () => {
     });
 
     tempSocket.on("ai-response", (messagePayload) => {
+      let displayContent = messagePayload.content;
+      try {
+        const parsed = JSON.parse(messagePayload.content);
+        displayContent = parsed.content || "Action complete.";
+        if (parsed.type === 'tool_result' && parsed.toolOutput?.updatedData?.triggerAction === "OPEN_UPLOAD_DIALOG") {
+            setTimeout(() => { triggerFileUpload(); }, 500);
+        }
+      } catch (e) {}
+
       setGeneralMessages((prev) => [...prev, {
         type: 'ai',
-        content: messagePayload.content
+        content: displayContent
       }]);
       dispatch(sendingFinished());
 
@@ -594,6 +648,7 @@ const Home = () => {
       await axios.delete(`${API_URL}/api/assets/${id}`, { withCredentials: true });
       dispatch(removeFile(id));
       fetchStorageSummary();
+      fetchAssets(activeTab, searchQuery, currentFolderId); // Trigger full re-fetch
     } catch (err) {
       console.error("Error deleting asset:", err);
     }
@@ -860,15 +915,6 @@ const Home = () => {
               Dashboard
             </button>
             <button
-              className={`sidebar-nav-item ${activeTab === 'ai-assistant' && !activeAsset ? 'active' : ''}`}
-              onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('ai-assistant'); }}
-            >
-              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              AI Assistant
-            </button>
-            <button
               className={`sidebar-nav-item ${activeTab === 'analytics' && !activeAsset ? 'active' : ''}`}
               onClick={() => { dispatch(setActiveAssetContext(null)); setActiveTab('analytics'); }}
             >
@@ -971,6 +1017,17 @@ const Home = () => {
           </div>
 
           <div className="top-bar-actions">
+            <button 
+              className={`gradient-btn ${isAiOpen ? 'active' : ''}`} 
+              onClick={() => setIsAiOpen(!isAiOpen)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: isAiOpen ? 'linear-gradient(135deg, #4B5563, #374151)' : 'linear-gradient(135deg, #8B5CF6, #3B82F6)', color: '#fff', border: 'none', padding: '0 1rem', height: '36px', borderRadius: '8px', cursor: 'pointer', fontWeight: '500', marginRight: '0.5rem' }}
+            >
+              <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Sahil GPT
+            </button>
+
             <button className="icon-action-btn" aria-label="Notifications" onClick={() => alert("No new notifications")} style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -978,13 +1035,48 @@ const Home = () => {
             </button>
 
             <div style={{ position: 'relative' }}>
-              <button className="profile-badge-btn" onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}>
-                <div className="profile-initials-circle">
+              <button 
+                className="profile-badge-btn" 
+                onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  background: 'var(--glass-bg)',
+                  border: '1px solid var(--glass-border)',
+                  padding: '5px 12px 5px 5px',
+                  borderRadius: '30px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <div 
+                  className="profile-initials-circle"
+                  style={{
+                    background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)',
+                    color: '#fff',
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: '600',
+                    fontSize: '0.85rem'
+                  }}
+                >
                   {user?.fullName?.firstName && user?.fullName?.lastName
                     ? `${user.fullName.firstName[0]}${user.fullName.lastName[0]}`.toUpperCase()
                     : "SU"}
                 </div>
-                <span className="profile-name-text">
+                <span 
+                  className="profile-name-text"
+                  style={{
+                    color: '#E5E7EB',
+                    fontWeight: '500',
+                    fontSize: '0.9rem'
+                  }}
+                >
                   {user?.fullName?.firstName && user?.fullName?.lastName
                     ? `${user.fullName.firstName} ${user.fullName.lastName}`
                     : "Sahil User"}
@@ -1124,409 +1216,10 @@ const Home = () => {
                 </div>
               </div>
             </div>
-          ) : activeTab === 'ai-assistant' ? (
-            /* ─── CASE B: Full-page AI Assistant Layout ───────────────────── */
-            <div className="ai-assistant-page">
-              <div className="ai-recent-conversations">
-                <div className="ai-recent-header">
-                  <span className="ai-recent-title">Recent Conversations</span>
-                  <button className="ai-new-chat-btn" onClick={handleNewChat} title="New Chat" aria-label="New Chat">
-                    <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                    </svg>
-                  </button>
-                </div>
-                <div className="ai-conversations-list">
-                  {chats.map(chat => (
-                    <button 
-                      key={chat._id} 
-                      className={`ai-conversation-item ${activeChatId === chat._id ? 'active' : ''}`}
-                      onClick={() => {
-                        dispatch(selectChat(chat._id));
-                        getGeneralMessages(chat._id);
-                      }}
-                    >
-                      <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                      </svg>
-                      <div className="ai-conversation-details">
-                        <span className="ai-conversation-title">{chat.title}</span>
-                        <span className="ai-conversation-time">Active chat</span>
-                      </div>
-                    </button>
-                  ))}
-                  {chats.length === 0 && (
-                    <div style={{ padding: '2rem 1rem', textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-                      No conversations yet. Click "+" above to start one!
-                    </div>
-                  )}
-                </div>
-              </div>
 
-              <div className="ai-chat-panel">
-                <div className="ai-chat-header">
-                  <div className="ai-assistant-badge">
-                    <span className="ai-active-dot"></span>
-                    <div>
-                      <span className="ai-assistant-name">Sahil GPT AI</span>
-                      <div className="ai-analyzed-file-subtext">
-                        {activeAsset ? `Active: Analyzing "${activeAsset.name}"` : "Active: Idle"}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="ai-header-actions">
-                    <button className="icon-action-btn" aria-label="Share Session" onClick={() => alert("Session share link copied!")} style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 10.742l4.028 2.014m0 0a3 3 0 102.243-4.077L10.96 8.684m0 0a3 3 0 10-2.243 4.077L8.684 10.742z" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="ai-chat-messages">
-                  {generalMessages.length === 0 ? (
-                    <div className="ai-empty-state">
-                      <div className="ai-empty-shield-container">
-                        <div className="ai-empty-shield-glow"></div>
-                        <svg className="ai-empty-shield-icon" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                      </div>
-                      <h3 className="ai-empty-title">How can I accelerate your workflow?</h3>
-                      <p className="ai-empty-subtitle">I can analyze your cloud storage documents, generate summaries, or help you find specific files using natural language.</p>
-                    </div>
-                  ) : (
-                    generalMessages.map((msg, idx) => (
-                      <div key={idx} className={`chat-bubble-container ${msg.type}`}>
-                        {msg.type === 'ai' && (
-                          <div className="ai-avatar-circle" style={{ marginRight: '0.75rem' }}>
-                            <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                          </div>
-                        )}
-                        <div className="chat-bubble-content glass-card">
-                          {renderChatMessage(msg.content)}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                  <div ref={messagesEndRef} />
-                </div>
-
-                {generalMessages.length > 0 && (
-                  <div className="suggested-chips-container">
-                    <button className="suggested-chip" onClick={() => dispatch(setInput("Summarize my storage patterns"))}>
-                      Summarize my storage patterns
-                    </button>
-                    <button className="suggested-chip" onClick={() => dispatch(setInput("Explain my files activity"))}>
-                      Explain my files activity
-                    </button>
-                  </div>
-                )}
-
-                <div className="ai-input-bar-container">
-                  <div className="ai-input-bar">
-                    <button className="ai-input-btn" aria-label="Attach File" onClick={() => alert("Select a file from your drive to attach.")}>
-                      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 11-2.828-2.828l6.414-6.414a4 4 0 015.656 5.656l-6.415 6.415a6 6 0 11-8.486-8.486L10.5 4.3" />
-                      </svg>
-                    </button>
-                    <input
-                      type="text"
-                      className="ai-input-field"
-                      placeholder="Ask Sahil AI anything about your drive…"
-                      value={chatInput}
-                      onChange={(e) => dispatch(setInput(e.target.value))}
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleGeneralChatSend(); }}
-                      disabled={isSending}
-                    />
-                    <button className={`ai-input-btn ${isListening ? 'listening' : ''}`} onClick={toggleListening} title="Voice input">
-                      <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
-                      </svg>
-                    </button>
-                    <button className="ai-send-circle-btn" onClick={handleGeneralChatSend} disabled={isSending || !chatInput.trim()}>
-                      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="ai-footer-text">Powered by Sahil Liquid Deep Tech LLM V4.2</div>
-                </div>
-              </div>
-            </div>
           ) : activeTab === 'analytics' ? (
             /* ─── CASE C: Dynamic Analytics Workspace ─────────────────────── */
-            <div className="analytics-container">
-              <div className="analytics-header-row">
-                <div>
-                  <span className="analytics-engine-label">Analytics Engine</span>
-                  <div className="analytics-header-title-sub">Real-time liquid insights into your digital ecosystem.</div>
-                </div>
-                <div className="analytics-header-actions">
-                  <button className="sso-outline-btn" style={{ height: '40px', padding: '0 1rem' }}>
-                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    Last 30 Days
-                  </button>
-                  <button className="gradient-btn" onClick={() => alert("Report generation complete!")}>
-                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '0.25rem' }}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Export Report
-                  </button>
-                </div>
-              </div>
-
-              {/* Dynamic Stats calculated purely from user files */}
-              <div className="stat-card-row">
-                <div className="stat-card glass-card cyan">
-                  <span className="stat-card-label">Total Storage</span>
-                  <div className="stat-card-value">
-                    {storageBytes > 1024 * 1024 * 1024 
-                      ? `${(storageBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-                      : `${(storageBytes / (1024 * 1024)).toFixed(1)} MB`}
-                  </div>
-                  <div className="stat-trend green">
-                    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" />
-                    </svg>
-                    +12% this month
-                  </div>
-                </div>
-
-                <div className="stat-card glass-card blue">
-                  <span className="stat-card-label">Active Files</span>
-                  <div className="stat-card-value">{files.filter(f => !f.isFolder).length}</div>
-                  <div className="stat-trend blue">
-                    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 19.5l15-15m0 0H8.25m11.25 0v11.25" />
-                    </svg>
-                    100% active session
-                  </div>
-                </div>
-
-                <div className="stat-card glass-card purple">
-                  <span className="stat-card-label">Shared Links</span>
-                  <div className="stat-card-value">{files.filter(f => f.isShared || f.sharedWith?.length > 0).length}</div>
-                  <div className="stat-trend gray">
-                    <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-                    </svg>
-                    0% external bounce
-                  </div>
-                </div>
-
-                <div className="stat-card glass-card red">
-                  <span className="stat-card-label">Stored Folders</span>
-                  <div className="stat-card-value">{files.filter(f => f.isFolder).length}</div>
-                  <div className="stat-trend gray">
-                    <span>⚡ Peak Demand</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Dynamic SVG Charts */}
-              <div className="analytics-charts-grid">
-                <div className="chart-wrapper glass-card">
-                  <div className="chart-header">
-                    <span className="chart-title">Storage Velocity</span>
-                    <div className="chart-legend">
-                      <div className="legend-item">
-                        <span className="legend-dot cyan"></span>
-                        <span>Upload Velocity</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{ width: '100%', height: '180px' }}>
-                    <svg width="100%" height="100%" viewBox="0 0 500 150" preserveAspectRatio="none">
-                      <defs>
-                        <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="var(--accent-from)" stopOpacity="0.4"/>
-                          <stop offset="100%" stopColor="var(--accent-from)" stopOpacity="0.0"/>
-                        </linearGradient>
-                      </defs>
-                      
-                      {/* Grid lines */}
-                      <line x1="0" y1="30" x2="500" y2="30" className="chart-grid-line" />
-                      <line x1="0" y1="80" x2="500" y2="80" className="chart-grid-line" />
-                      <line x1="0" y1="130" x2="500" y2="130" className="chart-grid-line" />
-                      
-                      {/* Compute and plot actual file velocity points */}
-                      {(() => {
-                        const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                        const velocityData = [0, 0, 0, 0, 0, 0, 0];
-                        (files || []).forEach(file => {
-                          if (!file.isFolder && file.createdAt) {
-                            let dayIdx = new Date(file.createdAt).getDay();
-                            let mappedIdx = dayIdx === 0 ? 6 : dayIdx - 1;
-                            velocityData[mappedIdx] += file.size || 0;
-                          }
-                        });
-                        
-                        const maxVal = Math.max(...velocityData, 1024 * 1024);
-                        const points = velocityData.map((val, idx) => {
-                          const x = 20 + idx * 76;
-                          const y = 130 - (val / maxVal) * 90;
-                          return { x, y };
-                        });
-                        
-                        let pathD = `M ${points[0].x} ${points[0].y}`;
-                        for (let i = 1; i < points.length; i++) {
-                          pathD += ` L ${points[i].x} ${points[i].y}`;
-                        }
-                        let areaD = `${pathD} L ${points[points.length - 1].x} 130 L ${points[0].x} 130 Z`;
-                        
-                        return (
-                          <>
-                            <path d={areaD} fill="url(#chartGradient)" />
-                            <path d={pathD} fill="none" stroke="var(--accent-from)" strokeWidth="2.5" strokeLinecap="round" />
-                            {points.map((p, idx) => (
-                              <circle key={idx} cx={p.x} cy={p.y} r="4" fill="#ffffff" stroke="var(--accent-from)" strokeWidth="2" />
-                            ))}
-                            {days.map((day, idx) => (
-                              <text key={idx} x={20 + idx * 76} y="145" className="chart-axis-text" textAnchor="middle">{day}</text>
-                            ))}
-                          </>
-                        );
-                      })()}
-                    </svg>
-                  </div>
-                </div>
-
-                <div className="chart-wrapper glass-card">
-                  <div className="chart-header">
-                    <span className="chart-title">Data Stack</span>
-                  </div>
-                  {(() => {
-                    const shares = getStorageCategoryShares();
-                    const mediaMB = parseFloat(shares.mediaMB) || 0;
-                    const docsMB = parseFloat(shares.docsMB) || 0;
-                    const otherMB = parseFloat(shares.otherMB) || 0;
-                    const totalMB = mediaMB + docsMB + otherMB;
-                    const usedGB = (storageBytes / (1024 * 1024 * 1024));
-                    const totalQuota = 20;
-                    const pct = Math.min(100, (usedGB / totalQuota) * 100);
-                    const strokeDashoffset = 251.2 - (251.2 * pct) / 100;
-
-                    return (
-                      <>
-                        <div className="donut-chart-container">
-                          <svg width="100" height="100" viewBox="0 0 100 100">
-                            <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.03)" strokeWidth="8" />
-                            <circle 
-                              cx="50" 
-                              cy="50" 
-                              r="40" 
-                              fill="none" 
-                              stroke="url(#donutGradient)" 
-                              strokeWidth="8" 
-                              strokeDasharray="251.2"
-                              strokeDashoffset={strokeDashoffset}
-                              strokeLinecap="round"
-                              transform="rotate(-90 50 50)"
-                            />
-                            <defs>
-                              <linearGradient id="donutGradient" x1="0" y1="0" x2="1" y2="1">
-                                <stop offset="0%" stopColor="var(--accent-from)" />
-                                <stop offset="100%" stopColor="var(--accent-to)" />
-                              </linearGradient>
-                            </defs>
-                          </svg>
-                          <div className="donut-center-text">
-                            <div className="donut-value">
-                              {storageBytes > 1024 * 1024 * 1024
-                                ? `${(storageBytes / (1024 * 1024 * 1024)).toFixed(1)}G`
-                                : `${(storageBytes / (1024 * 1024)).toFixed(0)}M`}
-                            </div>
-                            <span className="donut-label">Stored</span>
-                          </div>
-                        </div>
-
-                        <div className="data-breakdown-list">
-                          <div className="data-breakdown-item">
-                            <div className="breakdown-left">
-                              <span className="legend-dot cyan"></span>
-                              <span>Media</span>
-                            </div>
-                            <span className="breakdown-value">{mediaMB.toFixed(1)} MB</span>
-                          </div>
-                          <div className="data-breakdown-item">
-                            <div className="breakdown-left">
-                              <span className="legend-dot blue"></span>
-                              <span>Documents</span>
-                            </div>
-                            <span className="breakdown-value">{docsMB.toFixed(1)} MB</span>
-                          </div>
-                          <div className="data-breakdown-item">
-                            <div className="breakdown-left">
-                              <span className="legend-dot purple"></span>
-                              <span>Other</span>
-                            </div>
-                            <span className="breakdown-value">{otherMB.toFixed(1)} MB</span>
-                          </div>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* Dynamic Table listing actual folders created by the user */}
-              <div className="folders-table-card glass-card">
-                <div className="table-header-row">
-                  <span className="table-title">Top Content Structures</span>
-                  <a href="#all" className="table-link" onClick={(e) => { e.preventDefault(); setActiveTab('all'); }}>
-                    View Full Directory &rarr;
-                  </a>
-                </div>
-                <div className="data-table-wrapper">
-                  {files.filter(f => f.isFolder).length === 0 ? (
-                    <div style={{ padding: '2.5rem 0', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>
-                      No folder directory structures found. Create folders in the "All Files" tab to view analytics here.
-                    </div>
-                  ) : (
-                    <table className="data-table">
-                      <thead>
-                        <tr>
-                          <th>Folder Name</th>
-                          <th>Object Count</th>
-                          <th>Total Size</th>
-                          <th>Last Modified</th>
-                          <th>Health</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {files.filter(f => f.isFolder).map(folder => {
-                          const childFiles = files.filter(f => f.parentFolder === folder._id);
-                          const totalSize = childFiles.reduce((acc, curr) => acc + (curr.size || 0), 0);
-                          const formattedSize = totalSize > 1024 * 1024 * 1024 
-                            ? `${(totalSize / (1024 * 1024 * 1024)).toFixed(2)} GB`
-                            : `${(totalSize / (1024 * 1024)).toFixed(1)} MB`;
-                          const healthClass = childFiles.length > 0 ? "green" : "amber";
-                          return (
-                            <tr key={folder._id}>
-                              <td style={{ fontWeight: '500' }}>{folder.name}</td>
-                              <td>{childFiles.length} items</td>
-                              <td>{formattedSize}</td>
-                              <td>{new Date(folder.updatedAt || folder.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                              <td>
-                                <div className="status-indicator">
-                                  <span className={`status-indicator-dot ${healthClass}`}></span>
-                                  <span>{childFiles.length > 0 ? "Active" : "Empty"}</span>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </div>
-            </div>
+            <AnalyticsEngine socket={socket} />
           ) : activeTab === 'dashboard' ? (
             <div className="dashboard-view">
               <div className="dashboard-welcome-banner">
@@ -1663,7 +1356,7 @@ const Home = () => {
             <>
               {/* Toolbar Section (View toggles and New Folder) */}
               <div className="toolbar-row">
-                <div className="action-bar-left">
+                <div className="action-bar-left" style={{ display: 'flex', gap: '0.5rem' }}>
                   {activeTab === 'all' && (
                     <button className="new-folder-btn" onClick={() => setIsCreateFolderOpen(true)}>
                       <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
@@ -1672,6 +1365,18 @@ const Home = () => {
                       New Folder
                     </button>
                   )}
+                  <button className="action-btn upload" onClick={() => {
+                    if (!user?.isMegaLinked) {
+                      setIsMegaModalOpen(true);
+                      return;
+                    }
+                    document.getElementById('file-upload-input').click();
+                  }} style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
+                    <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" style={{ marginRight: '0.35rem' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Upload File
+                  </button>
                 </div>
                 
                 <div className="view-toggle-btns">
@@ -1934,7 +1639,7 @@ const Home = () => {
                           <h4 className="folders-section-title">Files</h4>
                           <div className="files-grid">
                             {items.map(file => (
-                              <article className="file-card" key={file._id} aria-label={`File card for ${file.name}`}>
+                              <article className="file-card" key={file._id} aria-label={`File card for ${file.name}`} onClick={() => setPreviewAsset(file)}>
                                 <div className="file-thumbnail-container">
                                   {file.type && file.type.startsWith('video/') ? (
                                     <>
@@ -1943,16 +1648,31 @@ const Home = () => {
                                           <path d="M8 5v14l11-7z" />
                                         </svg>
                                       </div>
-                                      <span className="video-duration">02:14</span>
+                                      <span className="video-duration">Video</span>
                                     </>
-                                  ) : (
+                                  ) : file.type && file.type.startsWith('image/') ? (
                                     <img src={getFileUrl(file.url)} alt={file.name} className="file-thumbnail" />
+                                  ) : file.type === 'application/pdf' ? (
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-secondary)' }}>
+                                      <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="#e53935" strokeWidth="1.5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                      </svg>
+                                      <span style={{ fontSize: '12px', marginTop: '8px' }}>PDF Document</span>
+                                    </div>
+                                  ) : (
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-secondary)' }}>
+                                      <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                      </svg>
+                                      <span style={{ fontSize: '12px', marginTop: '8px' }}>File</span>
+                                    </div>
                                   )}
 
                                   <div className="file-card-overlay">
                                     <button
                                       className="overlay-action-btn ai"
-                                      onClick={() => {
+                                      onClick={(e) => {
+                                        e.stopPropagation();
                                         dispatch(setActiveAssetContext(file));
                                         dispatch(setAnalysisStatus('completed'));
                                         setIsAiOpen(true);
@@ -1970,13 +1690,14 @@ const Home = () => {
                                       rel="noopener noreferrer"
                                       className="overlay-action-btn download"
                                       style={{ textDecoration: 'none' }}
+                                      onClick={(e) => e.stopPropagation()}
                                     >
                                       <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                       </svg>
                                       Download
                                     </a>
-                                    <button className="overlay-action-btn delete" onClick={() => deleteAsset(file._id)}>
+                                    <button className="overlay-action-btn delete" onClick={(e) => { e.stopPropagation(); deleteAsset(file._id); }}>
                                       <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                       </svg>
@@ -2307,6 +2028,146 @@ const Home = () => {
         )}
 
       </aside>
+
+      {/* ───────────────────────────────────────────────────────────────────────
+         Mega Connect Modal
+         ─────────────────────────────────────────────────────────────────────── */}
+      {isMegaModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3>Connect MEGA Storage</h3>
+              <button 
+                type="button" 
+                onClick={() => setIsMegaModalOpen(false)}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: '1.5rem', lineHeight: '1', padding: '0 0.5rem' }}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+            </div>
+            <form onSubmit={handleMegaLink}>
+              <div className="modal-body">
+                <p style={{ color: "var(--text-secondary)", marginBottom: "1rem" }}>
+                  To start storing files, link your MEGA account securely. This is required for your Sahil Drive session.
+                </p>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>MEGA Email</label>
+                  <input
+                    type="email"
+                    className="modal-input"
+                    value={megaEmailInput}
+                    onChange={(e) => setMegaEmailInput(e.target.value)}
+                    required
+                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', color: '#fff' }}
+                  />
+                </div>
+                <div style={{ position: 'relative' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>MEGA Password</label>
+                  <input
+                    type={showMegaPassword ? "text" : "password"}
+                    className="modal-input"
+                    value={megaPasswordInput}
+                    onChange={(e) => setMegaPasswordInput(e.target.value)}
+                    required
+                    style={{ width: '100%', padding: '0.75rem', paddingRight: '2.5rem', borderRadius: '8px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', color: '#fff' }}
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => setShowMegaPassword(!showMegaPassword)}
+                    style={{ position: 'absolute', right: '0.75rem', top: '2.5rem', background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer' }}
+                  >
+                    {showMegaPassword ? (
+                      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      </svg>
+                    ) : (
+                      <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Don't have an account? </span>
+                  <a href="https://mega.nz/register" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand-primary)', fontSize: '0.85rem', textDecoration: 'none' }}>Create one here</a>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="submit" className="action-btn upload" disabled={megaLinking}>
+                  {megaLinking ? "Connecting..." : "Connect Account"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────────────────
+         Mega Success Modal
+         ─────────────────────────────────────────────────────────────────────── */}
+      {isMegaSuccessModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: '400px', textAlign: 'center', padding: '2rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '1rem' }}>
+              <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'rgba(76, 175, 80, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="#4CAF50" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </div>
+            <h3 style={{ marginBottom: '1rem' }}>Success!</h3>
+            <p style={{ color: 'var(--text-secondary)', marginBottom: '1.5rem', lineHeight: '1.5' }}>
+              Your MEGA account has been linked successfully. You can now securely store and manage your files on Sahil Drive.
+            </p>
+            <button 
+              className="action-btn upload" 
+              onClick={() => setIsMegaSuccessModalOpen(false)}
+              style={{ width: '100%' }}
+            >
+              Continue to Dashboard
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────────────────
+         Inline Preview Modal
+         ─────────────────────────────────────────────────────────────────────── */}
+      {previewAsset && (
+        <div className="modal-overlay" onClick={() => setPreviewAsset(null)} style={{ zIndex: 9999 }}>
+          <div className="modal-card" style={{ width: '80%', maxWidth: '900px', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '80vh' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header" style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)', background: 'var(--bg-dark)' }}>
+              <h3>{previewAsset.name}</h3>
+              <button className="icon-action-btn" onClick={() => setPreviewAsset(null)}>
+                <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body" style={{ flex: 1, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+              {previewAsset.type?.startsWith('video/') ? (
+                <video src={getFileUrl(previewAsset.url)} controls autoPlay style={{ width: '100%', maxHeight: '100%' }} />
+              ) : previewAsset.type?.startsWith('image/') ? (
+                <img src={getFileUrl(previewAsset.url)} alt={previewAsset.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+              ) : previewAsset.type === 'application/pdf' ? (
+                <iframe src={getFileUrl(previewAsset.url)} title={previewAsset.name} width="100%" height="100%" frameBorder="0" />
+              ) : (
+                <div style={{ color: '#fff', textAlign: 'center', padding: '2rem' }}>
+                  <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1" style={{ marginBottom: '1rem' }}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <p>Preview not available for this file type.</p>
+                  <a href={getFileUrl(previewAsset.url)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand-primary)', textDecoration: 'none', display: 'inline-block', marginTop: '1rem' }}>
+                    Download File
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ───────────────────────────────────────────────────────────────────────
          4. Create Folder Modal Dialog

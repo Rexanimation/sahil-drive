@@ -3,6 +3,11 @@ const mongoose = require('mongoose');
 
 
 const userSchema = new mongoose.Schema({
+    googleId: {
+        type: String,
+        unique: true,
+        sparse: true, // Allow multiple docs without this field
+    },
     email: {
         type: String,
         required: true,
@@ -20,6 +25,26 @@ const userSchema = new mongoose.Schema({
     },
     password: {
         type: String,
+    },
+    avatar: {
+        type: String,
+        default: "",
+    },
+    megaConnected: {
+        type: Boolean,
+        default: false,
+    },
+    isMegaLinked: {
+        type: Boolean,
+        default: false,
+    },
+    megaPassword: {
+        type: String,
+        default: "",
+    },
+    megaEmail: {
+        type: String,
+        default: "",
     },
     usedStorage: {
         type: Number,

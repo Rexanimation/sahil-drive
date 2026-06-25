@@ -1,0 +1,89 @@
+const assetModel = require('../models/asset.model');
+const userModel = require('../models/user.model');
+
+async function getStorageAnalytics(userId) {
+    const user = await userModel.findById(userId);
+    if (!user) {
+        throw new Error("User not found");
+    }
+
+    const assets = await assetModel.find({ userId, isFolder: false, isDeleted: false }).lean();
+    const trashAssets = await assetModel.find({ userId, isDeleted: true }).lean();
+    const favoriteAssets = await assetModel.find({ userId, isFavorite: true, isDeleted: false }).lean();
+
+    const usedStorage = assets.reduce((acc, curr) => acc + (curr.size || 0), 0);
+    const trashSize = trashAssets.reduce((acc, curr) => acc + (curr.size || 0), 0);
+    
+    // Categorize files
+    let fileTypes = {
+        Images: { count: 0, size: 0 },
+        Videos: { count: 0, size: 0 },
+        Documents: { count: 0, size: 0 },
+        Audio: { count: 0, size: 0 },
+        Code: { count: 0, size: 0 },
+        Compressed: { count: 0, size: 0 },
+        Other: { count: 0, size: 0 }
+    };
+
+    assets.forEach(asset => {
+        const mime = asset.mimeType || "";
+        const size = asset.size || 0;
+        
+        if (mime.startsWith('image/')) {
+            fileTypes.Images.count++; fileTypes.Images.size += size;
+        } else if (mime.startsWith('video/')) {
+            fileTypes.Videos.count++; fileTypes.Videos.size += size;
+        } else if (mime.startsWith('audio/')) {
+            fileTypes.Audio.count++; fileTypes.Audio.size += size;
+        } else if (mime.includes('pdf') || mime.includes('document') || mime.includes('msword') || mime.includes('excel')) {
+            fileTypes.Documents.count++; fileTypes.Documents.size += size;
+        } else if (mime.includes('javascript') || mime.includes('json') || mime.includes('html') || mime.includes('css')) {
+            fileTypes.Code.count++; fileTypes.Code.size += size;
+        } else if (mime.includes('zip') || mime.includes('tar') || mime.includes('rar')) {
+            fileTypes.Compressed.count++; fileTypes.Compressed.size += size;
+        } else {
+            fileTypes.Other.count++; fileTypes.Other.size += size;
+        }
+    });
+
+    const largestFiles = [...assets]
+        .sort((a, b) => (b.size || 0) - (a.size || 0))
+        .slice(0, 5)
+        .map(f => ({ name: f.name, size: f.size, type: f.mimeType }));
+
+    const recentUploads = [...assets]
+        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+        .slice(0, 5)
+        .map(f => ({ name: f.name, size: f.size, date: f.createdAt }));
+
+    // Mock storage trend for now, ideally group by date
+    const storageTrend = [
+        { name: 'Mon', usage: usedStorage * 0.8 },
+        { name: 'Tue', usage: usedStorage * 0.85 },
+        { name: 'Wed', usage: usedStorage * 0.9 },
+        { name: 'Thu', usage: usedStorage * 0.95 },
+        { name: 'Fri', usage: usedStorage * 0.98 },
+        { name: 'Sat', usage: usedStorage * 0.99 },
+        { name: 'Sun', usage: usedStorage }
+    ];
+
+    return {
+        storage: {
+            total: user.storageQuota,
+            used: usedStorage,
+            available: user.storageQuota - usedStorage,
+            percentage: ((usedStorage / user.storageQuota) * 100).toFixed(2),
+            trashSize
+        },
+        fileTypes,
+        largestFiles,
+        recentUploads,
+        storageTrend,
+        favoritesCount: favoriteAssets.length,
+        trashCount: trashAssets.length
+    };
+}
+
+module.exports = {
+    getStorageAnalytics
+};

@@ -37,6 +37,21 @@ self.addEventListener('fetch', (event) => {
   }
   const url = new URL(event.request.url);
 
+  // Skip localhost requests (development mode)
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+    return;
+  }
+
+  // Skip Vite dev dependencies
+  if (url.pathname.includes('/node_modules/') || url.pathname.includes('.vite')) {
+    return;
+  }
+
+  // Skip WebSocket requests
+  if (event.request.url.startsWith('ws://') || event.request.url.startsWith('wss://')) {
+    return;
+  }
+
   // API requests should be network-first to avoid stale responses on Render
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(
@@ -67,6 +82,8 @@ self.addEventListener('fetch', (event) => {
           cache.put(event.request, responseToCache);
         });
         return response;
+      }).catch(() => {
+        return new Response('Network error', { status: 500 });
       });
     })
   );

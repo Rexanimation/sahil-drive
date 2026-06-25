@@ -1,71 +1,76 @@
 const { Storage } = require('megajs');
-const fs = require('fs');
+const { decrypt } = require('../utils/crypto');
+const assetModel = require('../models/asset.model');
+const userModel = require('../models/user.model');
 
-let storageInstance = null;
-let isInitializing = false;
-let initPromise = null;
+const userStorageInstances = {};
+const initializingPromises = {};
 
-async function getStorage() {
-    if (storageInstance && storageInstance.ready) {
-        return storageInstance;
+/**
+ * Gets or initializes a MEGA storage instance for a specific user
+ */
+async function getStorageForUser(user) {
+    if (!user || !user.megaEmail || !user.megaPassword) {
+        throw new Error("User does not have MEGA credentials linked.");
     }
 
-    const email = process.env.MEGA_EMAIL;
-    const password = process.env.MEGA_PASSWORD;
+    const userId = user._id.toString();
 
-    if (!email || !password) {
-        console.warn("[MEGA] MEGA_EMAIL and/or MEGA_PASSWORD not configured. File operations will fall back to local disk.");
-        return null;
+    // Return cached instance if ready
+    if (userStorageInstances[userId] && userStorageInstances[userId].ready) {
+        return userStorageInstances[userId];
     }
 
-    if (isInitializing) {
-        return initPromise;
+    // Return pending promise if already initializing
+    if (initializingPromises[userId]) {
+        return initializingPromises[userId];
     }
 
-    isInitializing = true;
-    initPromise = new Promise((resolve, reject) => {
+    const email = user.megaEmail;
+    const password = decrypt(user.megaPassword);
+
+    if (!password) {
+        throw new Error("Failed to decrypt MEGA password. Please re-link your account.");
+    }
+
+    initializingPromises[userId] = new Promise((resolve, reject) => {
         try {
             const storage = new Storage({
                 email,
                 password,
                 autologin: true
-            });
-
-            storage.on('ready', () => {
-                console.log("[MEGA] Connected to MEGA storage account successfully.");
-                storageInstance = storage;
-                isInitializing = false;
-                resolve(storage);
-            });
-
-            storage.on('error', (err) => {
-                console.error("[MEGA] Failed to connect to MEGA storage:", err.message);
-                isInitializing = false;
-                resolve(null);
+            }, (err) => {
+                if (err) {
+                    console.error(`[MEGA] Failed to connect for user ${email}:`, err.message);
+                    delete initializingPromises[userId];
+                    reject(new Error("Invalid MEGA credentials"));
+                } else {
+                    console.log(`[MEGA] Connected to MEGA account successfully for user: ${email}`);
+                    userStorageInstances[userId] = storage;
+                    delete initializingPromises[userId];
+                    resolve(storage);
+                }
             });
         } catch (err) {
-            console.error("[MEGA] Initialization threw an error:", err.message);
-            isInitializing = false;
-            resolve(null);
+            console.error(`[MEGA] Initialization threw an error for user ${email}:`, err.message);
+            delete initializingPromises[userId];
+            reject(err);
         }
     });
 
-    return initPromise;
+    return initializingPromises[userId];
 }
 
 /**
- * Upload a file buffer/stream to MEGA
+ * Upload a file buffer/stream to the user's personal MEGA account
+ * @param {Object} user - The authenticated user object containing mega credentials
  * @param {string} name - File name
  * @param {number} size - File size in bytes
  * @param {Buffer} buffer - File buffer
  * @returns {Promise<string>} - The MEGA node handle
  */
-async function uploadFile(name, size, buffer) {
-    const storage = await getStorage();
-    if (!storage) {
-        throw new Error("MEGA storage is not initialized");
-    }
-
+async function uploadFile(user, name, size, buffer) {
+    const storage = await getStorageForUser(user);
     const file = await storage.upload({
         name: name,
         size: size
@@ -75,46 +80,113 @@ async function uploadFile(name, size, buffer) {
 }
 
 /**
- * Delete a file node by its MEGA handle
+ * Delete a file node by its MEGA handle from the user's personal account
+ * @param {Object} user - The authenticated user object
  * @param {string} handle - MEGA node handle
  */
-async function deleteFile(handle) {
-    const storage = await getStorage();
-    if (!storage) {
-        throw new Error("MEGA storage is not initialized");
-    }
-
+async function deleteFile(user, handle) {
+    const storage = await getStorageForUser(user);
     const file = storage.files[handle];
     if (file) {
         await file.delete(true); // Permanent deletion
-        console.log(`[MEGA] Deleted file node: ${handle}`);
+        console.log(`[MEGA] Deleted file node: ${handle} for user ${user.megaEmail}`);
     } else {
         console.warn(`[MEGA] Node handle not found in account files: ${handle}`);
     }
 }
 
 /**
- * Stream a file decrypted directly from MEGA
+ * Stream a file decrypted directly from the user's personal MEGA account
+ * @param {Object} user - The authenticated user object
  * @param {string} handle - MEGA node handle
  * @returns {Promise<ReadableStream>} - Readable decryption stream
  */
-async function getFileStream(handle) {
-    const storage = await getStorage();
-    if (!storage) {
-        throw new Error("MEGA storage is not initialized");
-    }
-
+async function getFileStream(user, handle) {
+    const storage = await getStorageForUser(user);
     const file = storage.files[handle];
     if (!file) {
-        throw new Error("File not found in MEGA storage");
+        throw new Error("File not found in your MEGA storage");
     }
-
     return file.download();
 }
 
+/**
+ * Validate credentials without permanently caching the instance (used during linking)
+ */
+async function validateCredentials(email, password) {
+    return new Promise((resolve, reject) => {
+        try {
+            const storage = new Storage({
+                email,
+                password,
+                autologin: true
+            }, (err) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(true);
+                }
+            });
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
+
+/**
+ * Synchronize deletions: if a file is deleted from Mega directly, remove it from MongoDB
+ */
+async function syncDeletions(user) {
+    try {
+        const storage = await getStorageForUser(user);
+        const megaHandles = Object.keys(storage.files);
+        
+        const dbAssets = await assetModel.find({ 
+            userId: user._id, 
+            isFolder: false, 
+            megaHandle: { $exists: true, $ne: null } 
+        });
+        
+        let deletedSize = 0;
+        
+        for (const asset of dbAssets) {
+            if (!megaHandles.includes(asset.megaHandle)) {
+                console.log(`[MEGA Sync] File ${asset.name} was deleted directly from MEGA. Removing from DB.`);
+                deletedSize += (asset.size || 0);
+                await assetModel.findByIdAndDelete(asset._id);
+            }
+        }
+        
+        if (deletedSize > 0) {
+            const userRecord = await userModel.findById(user._id);
+            if (userRecord) {
+                userRecord.usedStorage = Math.max(0, userRecord.usedStorage - deletedSize);
+                await userRecord.save();
+            }
+        }
+    } catch (err) {
+        console.error("[MEGA Sync] Failed to sync deletions:", err.message);
+    }
+}
+
+/**
+ * Disconnect a user's MEGA session
+ */
+function disconnectUser(userId) {
+    if (userStorageInstances[userId]) {
+        delete userStorageInstances[userId];
+    }
+    if (initializingPromises[userId]) {
+        delete initializingPromises[userId];
+    }
+}
+
 module.exports = {
-    getStorage,
+    getStorageForUser,
     uploadFile,
     deleteFile,
-    getFileStream
+    getFileStream,
+    validateCredentials,
+    syncDeletions,
+    disconnectUser
 };

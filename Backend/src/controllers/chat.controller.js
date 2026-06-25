@@ -1,5 +1,6 @@
 const chatModel = require('../models/chat.model');
 const messageModel = require('../models/message.model');
+const aiService = require('../services/ai.service');
 
 
 async function createChat(req, res) {
@@ -53,8 +54,33 @@ async function getMessages(req, res) {
 
 }
 
+async function chatWithAi(req, res) {
+    try {
+        const { message, parentFolderId } = req.body;
+        const user = req.user;
+
+        if (!message) {
+            return res.status(400).json({ error: "Message is required" });
+        }
+
+        const response = await aiService.generateResponse(
+            [{ role: "user", content: message }],
+            "",
+            { userId: user._id, parentFolderId, socket: null }
+        );
+
+        res.status(200).json({
+            response: response
+        });
+    } catch (err) {
+        console.error("[chatWithAi Error]:", err);
+        res.status(500).json({ error: "Failed to process AI chat" });
+    }
+}
+
 module.exports = {
     createChat,
     getChats,
-    getMessages
+    getMessages,
+    chatWithAi
 };

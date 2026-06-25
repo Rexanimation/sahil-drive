@@ -5,11 +5,12 @@ const initSocketServer = require("./src/sockets/socket.server");
 const httpServer = require("http").createServer(app);
 
 
-
 connectDb()
 initSocketServer(httpServer);
 
 
-httpServer.listen(3000, () => {
-    console.log("Server is running on port 3000");
+// Server startup
+httpServer.listen(process.env.PORT || 4000, () => {
+    console.log(`Server is running on port ${process.env.PORT || 4000}`);
 })
+// Trigger nodemon restart

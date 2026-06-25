@@ -1,2 +1,5 @@
 .env
 node_modules
+.mongo-data/
+.mongo-log/
+public/uploads/

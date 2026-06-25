@@ -8,5 +8,6 @@ router.post("/login", authControllers.loginUser);
 router.post("/google-login", authControllers.googleLoginUser);
 router.get("/me", authMiddleware.authUser, authControllers.getMe);
 router.post("/logout", authControllers.logoutUser);
+router.post("/link-mega", authMiddleware.authUser, authControllers.linkMega);
 
 module.exports = router;

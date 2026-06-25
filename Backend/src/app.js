@@ -22,6 +22,10 @@ const uploadRoutes = require("./routes/upload.routes");
 
 const shareRoutes = require("./routes/share.routes");
 
+const analyticsRoutes = require("./routes/analytics.routes");
+
+const megaRoutes = require("./routes/mega.routes");
+
 
 
 
@@ -77,12 +81,16 @@ app.use('/api/upload', uploadRoutes);
 
 app.use('/api/shares', shareRoutes);
 
+app.use('/api/analytics', analyticsRoutes);
+
+app.use('/api/mega', megaRoutes);
 
 
 
 
 
-app.get("*name", (req, res) => {
+
+app.get("*splat", (req, res) => {
  res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 

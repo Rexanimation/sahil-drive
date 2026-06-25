@@ -86,7 +86,16 @@ const assetSchema = new mongoose.Schema({
                 default: 'viewer'
             }
         }
-    ]
+    ],
+    // Trash Support
+    isDeleted: {
+        type: Boolean,
+        default: false
+    },
+    deletedAt: {
+        type: Date,
+        default: null
+    }
 }, {
     timestamps: true
 });

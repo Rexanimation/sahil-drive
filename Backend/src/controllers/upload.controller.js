@@ -131,7 +131,7 @@ async function finalizeUpload(req, res) {
         let finalUrl = "";
         try {
             const fileData = fs.readFileSync(finalFilePath);
-            megaHandle = await megaService.uploadFile(name, size, fileData);
+            megaHandle = await megaService.uploadFile(req.user, name, size, fileData);
             fs.unlinkSync(finalFilePath);
         } catch (megaErr) {
             console.warn("[MEGA] Chunk compilation upload failed, falling back to local file:", megaErr.message);

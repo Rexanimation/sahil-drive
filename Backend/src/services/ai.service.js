@@ -2,6 +2,8 @@ const Groq = require("groq-sdk");
 const { HfInference } = require("@huggingface/inference");
 const assetModel = require("../models/asset.model");
 const userModel = require("../models/user.model");
+const megaService = require("./mega.service");
+const analyticsService = require("./analytics.service");
 
 // Initialize Groq
 let groq = null;
@@ -15,22 +17,22 @@ if (process.env.GROQ_API_KEY) {
     console.warn("[AI] GROQ_API_KEY is not defined in the environment.");
 }
 
-// Initialize Hugging Face for Embeddings (pinecone dependency)
+// Initialize Hugging Face for Embeddings
 const hf = new HfInference(process.env.HF_API_KEY);
-
-// Groq Model configuration
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 
-// System Prompt for Sahil AI
 const SYSTEM_PROMPT = `
-You are "Sahil AI" (also referred to as Sahil GPT), an expert full-stack developer and AI-powered cloud storage assistant.
-Mission: Help users store, organize, analyze, and retrieve files within their digital vault on Sahil Drive.
-Voice & Tone: Playful, professional, highly capable, supportive.
-Current context: Use the current date and time for any queries about "recent visuals" or uploads.
-Always answer questions concisely and structure replies with clean markdown.
+You are Sahil GPT.
+You are the intelligent operating system of Sahil Drive.
+You never pretend to perform actions.
+Whenever a user asks to perform an operation on storage, immediately execute the appropriate backend tool.
+Every authenticated request belongs only to the currently logged-in user.
+Never access another user's data.
+Always return confirmation after successful execution.
+Do not tell the user to refresh, the frontend will refresh automatically if you return refreshRequired.
+When asked about analytics, storage usage, or recent files, execute the corresponding tool.
 `;
 
-// Helper to convert conversation history into Groq chat history format
 function toGroqHistory(contents) {
     if (!Array.isArray(contents)) return [];
     return contents.map(item => {
@@ -41,293 +43,282 @@ function toGroqHistory(contents) {
         } else if (typeof item.content === "string") {
             text = item.content;
         }
-        return {
-            role,
-            content: text
-        };
+        return { role, content: text };
     });
 }
 
-// Generate Chat Response using Groq with Function Calling (Tools)
-async function generateResponse(content, folderContextString = "", context = {}) {
-    try {
-        if (!groq) {
-            throw new Error("Groq API key is not configured.");
+const toolsDefinition = [
+    {
+        type: "function",
+        function: {
+            name: "createFolder",
+            description: "Creates a new folder",
+            parameters: {
+                type: "object",
+                properties: {
+                    folderName: { type: "string" },
+                    parentFolderId: { type: "string", description: "Optional parent ID. Use 'root' for root." }
+                },
+                required: ["folderName"]
+            }
         }
+    },
+    {
+        type: "function",
+        function: {
+            name: "deleteItem",
+            description: "Deletes a file or folder (moves to trash)",
+            parameters: {
+                type: "object",
+                properties: { itemId: { type: "string" } },
+                required: ["itemId"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "emptyTrash",
+            description: "Permanently deletes all items in the trash",
+            parameters: { type: "object", properties: {} }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "searchFiles",
+            description: "Searches files or folders by name or keyword",
+            parameters: {
+                type: "object",
+                properties: { searchQuery: { type: "string" } },
+                required: ["searchQuery"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "getStorageUsage",
+            description: "Gets detailed storage analytics",
+            parameters: { type: "object", properties: {} }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "triggerUpload",
+            description: "Triggers the frontend to open the file upload picker",
+            parameters: { type: "object", properties: {} }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "renameItem",
+            description: "Renames a file or folder",
+            parameters: {
+                type: "object",
+                properties: {
+                    itemId: { type: "string" },
+                    newName: { type: "string" }
+                },
+                required: ["itemId", "newName"]
+            }
+        }
+    },
+    {
+        type: "function",
+        function: {
+            name: "addFavorite",
+            description: "Marks an item as favorite",
+            parameters: {
+                type: "object",
+                properties: { itemId: { type: "string" } },
+                required: ["itemId"]
+            }
+        }
+    }
+];
+
+async function executeLocalTool(name, args, context) {
+    const { userId, parentFolderId, socket } = context;
+    if (!userId) return { success: false, humanReadableMessage: "User is not authenticated.", refreshRequired: false };
+
+    let result = { success: false, actionPerformed: name, updatedData: null, humanReadableMessage: "", refreshRequired: false };
+
+    try {
+        switch (name) {
+            case "createFolder": {
+                const folderName = args.folderName;
+                const pId = args.parentFolderId || parentFolderId || null;
+                const finalParentId = (pId === 'root' || pId === 'null') ? null : pId;
+
+                const newFolder = await assetModel.create({
+                    user: userId, userId: userId,
+                    name: folderName, type: "application/vnd.google-apps.folder",
+                    mimeType: "application/vnd.google-apps.folder",
+                    isFolder: true, parentFolderId: finalParentId
+                });
+
+                if (socket) socket.emit("refresh-assets");
+                result = { success: true, actionPerformed: name, updatedData: newFolder, humanReadableMessage: `Folder '${folderName}' created successfully.`, refreshRequired: true };
+                break;
+            }
+            case "deleteItem": {
+                const asset = await assetModel.findOne({ _id: args.itemId, userId });
+                if (!asset) {
+                    result.humanReadableMessage = "Item not found.";
+                    break;
+                }
+                asset.isDeleted = true;
+                asset.deletedAt = new Date();
+                await asset.save();
+                if (socket) socket.emit("refresh-assets");
+                result = { success: true, actionPerformed: name, updatedData: asset, humanReadableMessage: `Moved '${asset.name}' to trash.`, refreshRequired: true };
+                break;
+            }
+            case "emptyTrash": {
+                const trashAssets = await assetModel.find({ userId, isDeleted: true });
+                const user = await userModel.findById(userId);
+                let freedSpace = 0;
+                for (const a of trashAssets) {
+                    if (a.megaHandle) {
+                        try { await megaService.deleteFile(user, a.megaHandle); } catch (e) { console.error("Mega delete error", e); }
+                    }
+                    freedSpace += (a.size || 0);
+                    await assetModel.findByIdAndDelete(a._id);
+                }
+                if (user) {
+                    user.usedStorage = Math.max(0, user.usedStorage - freedSpace);
+                    await user.save();
+                }
+                if (socket) socket.emit("refresh-assets");
+                result = { success: true, actionPerformed: name, humanReadableMessage: `Trash emptied. Freed ${freedSpace} bytes.`, refreshRequired: true };
+                break;
+            }
+            case "searchFiles": {
+                const files = await assetModel.find({ userId, isDeleted: false, name: { $regex: args.searchQuery, $options: "i" } }).limit(10).lean();
+                result = { success: true, actionPerformed: name, updatedData: files, humanReadableMessage: `Found ${files.length} items matching '${args.searchQuery}'.`, refreshRequired: false };
+                break;
+            }
+            case "getStorageUsage": {
+                const stats = await analyticsService.getStorageAnalytics(userId);
+                result = { success: true, actionPerformed: name, updatedData: stats, humanReadableMessage: `You are using ${stats.storage.percentage}% of your ${stats.storage.total / (1024*1024*1024)}GB quota.`, refreshRequired: false };
+                break;
+            }
+            case "triggerUpload": {
+                // Return a special flag that the frontend can interpret to open the file dialog
+                result = { success: true, actionPerformed: name, updatedData: { triggerAction: "OPEN_UPLOAD_DIALOG" }, humanReadableMessage: "Opening the upload dialog for you...", refreshRequired: false };
+                break;
+            }
+            case "renameItem": {
+                const asset = await assetModel.findOneAndUpdate({ _id: args.itemId, userId }, { name: args.newName }, { new: true });
+                if (!asset) { result.humanReadableMessage = "Item not found."; break; }
+                if (socket) socket.emit("refresh-assets");
+                result = { success: true, actionPerformed: name, updatedData: asset, humanReadableMessage: `Renamed to '${args.newName}'.`, refreshRequired: true };
+                break;
+            }
+            case "addFavorite": {
+                const asset = await assetModel.findOneAndUpdate({ _id: args.itemId, userId }, { isFavorite: true }, { new: true });
+                if (!asset) { result.humanReadableMessage = "Item not found."; break; }
+                if (socket) socket.emit("refresh-assets");
+                result = { success: true, actionPerformed: name, updatedData: asset, humanReadableMessage: `Added '${asset.name}' to favorites.`, refreshRequired: true };
+                break;
+            }
+            default:
+                result.humanReadableMessage = `Function ${name} is not fully implemented yet.`;
+        }
+    } catch (err) {
+        result.humanReadableMessage = `Error executing ${name}: ${err.message}`;
+    }
+
+    return result;
+}
+
+async function generateResponse(content, contextString = "", context = {}) {
+    try {
+        if (!groq) throw new Error("Groq API key is not configured.");
 
         let systemInstruction = SYSTEM_PROMPT;
-        if (folderContextString) {
-            systemInstruction += `\n\n[Active Directory Context]\nThe user is currently browsing a folder containing these files:\n${folderContextString}`;
+        systemInstruction += `\n\nCurrent Context:\nUserId: ${context.userId}\nCurrent Folder Id: ${context.parentFolderId || 'root'}\nUsed Storage: ${context.usedStorage || 0}\n`;
+        if (contextString) {
+            systemInstruction += `\n[Directory Content]\n${contextString}`;
         }
 
-        const messages = [
-            { role: "system", content: systemInstruction },
-            ...toGroqHistory(content)
-        ];
+        const messages = [ { role: "system", content: systemInstruction }, ...toGroqHistory(content) ];
 
-        if (messages.length === 1) {
-            return "Hello! I am Sahil AI. How can I assist you with your files today?";
-        }
-
-        // Define tools for Sahil GPT project controller
-        const tools = [
-            {
-                type: "function",
-                function: {
-                    name: "create_folder",
-                    description: "Create a new folder (directory) in the cloud drive.",
-                    parameters: {
-                        type: "object",
-                        properties: {
-                            name: { type: "string", description: "The folder name to create." },
-                            parentFolderId: { type: "string", description: "The parent folder ID (optional). If not provided, it will create in the current directory." }
-                        },
-                        required: ["name"]
-                    }
-                }
-            },
-            {
-                type: "function",
-                function: {
-                    name: "get_storage_summary",
-                    description: "Get user's storage usage details, limit, and remaining quota.",
-                    parameters: {
-                        type: "object",
-                        properties: {}
-                    }
-                }
-            },
-            {
-                type: "function",
-                function: {
-                    name: "find_unused_files",
-                    description: "Search for unused, non-favorite, or large files that can be suggested for deletion.",
-                    parameters: {
-                        type: "object",
-                        properties: {}
-                    }
-                }
-            }
-        ];
+        if (messages.length === 1) return "Hello! I am Sahil AI. How can I assist you with your files today?";
 
         let response = await groq.chat.completions.create({
-            model: GROQ_MODEL,
-            messages: messages,
-            tools: tools,
-            tool_choice: "auto"
+            model: GROQ_MODEL, messages, tools: toolsDefinition, tool_choice: "auto"
         });
 
         let responseMessage = response.choices[0].message;
+        let finalResponseData = { type: 'text', content: "" };
 
-        // Process function calls sequentially if requested by Groq
         while (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
             messages.push(responseMessage);
-
             for (const toolCall of responseMessage.tool_calls) {
                 const name = toolCall.function.name;
                 let args = {};
-                try {
-                    args = JSON.parse(toolCall.function.arguments);
-                } catch (e) {
-                    console.error("[Groq] Failed to parse tool arguments:", toolCall.function.arguments);
-                }
+                try { args = JSON.parse(toolCall.function.arguments); } catch (e) {}
 
-                console.log(`[Groq Tool Call] Executing tool ${name} with args:`, args);
+                console.log(`[Groq Tool] ${name}`, args);
                 const toolOutput = await executeLocalTool(name, args, context);
 
                 messages.push({
-                    role: "tool",
-                    tool_call_id: toolCall.id,
-                    name: name,
-                    content: JSON.stringify(toolOutput)
+                    role: "tool", tool_call_id: toolCall.id, name: name, content: JSON.stringify(toolOutput)
                 });
+                
+                // Keep track of the last tool output to send back structured data to the frontend
+                finalResponseData = { type: 'tool_result', toolOutput };
             }
 
-            response = await groq.chat.completions.create({
-                model: GROQ_MODEL,
-                messages: messages,
-                tools: tools
-            });
+            response = await groq.chat.completions.create({ model: GROQ_MODEL, messages, tools: toolsDefinition });
             responseMessage = response.choices[0].message;
+            finalResponseData.content = responseMessage.content;
         }
 
-        return responseMessage.content || "";
+        if (finalResponseData.type === 'text') {
+            finalResponseData.content = responseMessage.content;
+        }
+
+        // We return a JSON stringified object that the chat controller will send to the client
+        return JSON.stringify(finalResponseData);
+
     } catch (error) {
         console.error("[Groq] generateResponse error:", error.message);
-        return "Sorry, I encountered an issue generating a response. Please verify that your GROQ_API_KEY is configured correctly.";
+        return JSON.stringify({ type: 'error', content: "Sorry, I encountered an issue." });
     }
 }
 
-// Local helper to execute functions on backend Mongoose models
-async function executeLocalTool(name, args, context) {
-    const { userId, parentFolderId, socket } = context;
-    if (!userId) {
-        return { error: "User is not authenticated." };
-    }
-
-    switch (name) {
-        case "create_folder":
-            try {
-                const folderName = args.name;
-                const parentId = args.parentFolderId || parentFolderId || null;
-                const finalParentId = (parentId === 'root' || parentId === 'null' || parentId === 'undefined') ? null : parentId;
-
-                const newFolder = await assetModel.create({
-                    user: userId,
-                    userId: userId,
-                    name: folderName,
-                    type: "application/vnd.google-apps.folder",
-                    mimeType: "application/vnd.google-apps.folder",
-                    isFolder: true,
-                    parentFolderId: finalParentId,
-                    size: 0,
-                    url: ""
-                });
-
-                // Notify frontend to refresh lists in real-time
-                if (socket) {
-                    socket.emit("refresh-assets");
-                }
-
-                return {
-                    success: true,
-                    message: `Folder '${folderName}' created successfully.`,
-                    folderId: newFolder._id.toString()
-                };
-            } catch (err) {
-                return { error: `Failed to create folder: ${err.message}` };
-            }
-
-        case "get_storage_summary":
-            try {
-                const user = await userModel.findById(userId);
-                if (!user) return { error: "User not found." };
-                const usedMB = (user.usedStorage / (1024 * 1024)).toFixed(2);
-                const quotaMB = (user.storageQuota / (1024 * 1024)).toFixed(2);
-                const remainingMB = ((user.storageQuota - user.usedStorage) / (1024 * 1024)).toFixed(2);
-                
-                return {
-                    success: true,
-                    usedMB,
-                    quotaMB,
-                    remainingMB,
-                    message: `Used: ${usedMB} MB, Quota: ${quotaMB} MB, Remaining: ${remainingMB} MB.`
-                };
-            } catch (err) {
-                return { error: `Failed to retrieve storage: ${err.message}` };
-            }
-
-        case "find_unused_files":
-            try {
-                // Find up to 5 large files that are not folders and not favorites
-                const files = await assetModel.find({
-                    userId,
-                    isFolder: false,
-                    isFavorite: false
-                }).sort({ size: -1 }).limit(5).lean();
-
-                return {
-                    success: true,
-                    files: files.map(f => ({
-                        id: f._id.toString(),
-                        name: f.name,
-                        sizeMB: (f.size / (1024 * 1024)).toFixed(2),
-                        tags: f.tags,
-                        createdAt: f.createdAt
-                    }))
-                };
-            } catch (err) {
-                return { error: `Failed to scan unused files: ${err.message}` };
-            }
-
-        default:
-            return { error: `Function ${name} is not implemented.` };
-    }
-}
-
-// Analyze File Details (generate tags, summaries, colors, and resolutions)
 async function analyzeAsset(fileName, fileType, fileSize) {
+    // Keeping this the same
     try {
-        if (!groq) {
-            throw new Error("Groq API key is not configured.");
-        }
-
-        const prompt = `Analyze this file metadata for a cloud storage platform (Sahil Drive).
-File Name: ${fileName}
-File Type: ${fileType}
-File Size: ${(fileSize / (1024 * 1024)).toFixed(2)} MB
-
-Provide a JSON response containing:
-1. "tags": An array of 4 to 6 relevant tags (like "Sunset", "Beach", "Ocean", "Nature" - do NOT prepend them with the '#' symbol).
-2. "summary": A 2-3 sentence smart summary of what the file likely represents, written in a high-end SaaS tone. Use the name "Sahil AI" to describe yourself when referring to the analysis, e.g. "Sahil AI detects...".
-3. "colors": An array of 2 primary hex colors matching the theme of the file.
-4. "resolution": A typical high-quality resolution (like "4096 x 2304" for 4K image, or a suitable resolution for the file type, e.g., "1920 x 1080 (1080p)" for video).
-
-Respond ONLY with the JSON object. Do not include markdown formatting or wrappers.`;
-
+        if (!groq) throw new Error("Groq API key is not configured.");
+        const prompt = `Analyze file metadata: ${fileName}, ${fileType}, ${(fileSize / (1024 * 1024)).toFixed(2)} MB. Provide JSON: { "tags": [], "summary": "", "colors": [], "resolution": "" }`;
         const response = await groq.chat.completions.create({
-            model: GROQ_MODEL,
-            messages: [
-                {
-                    role: "user",
-                    content: prompt
-                }
-            ],
-            response_format: { type: "json_object" }
+            model: GROQ_MODEL, messages: [ { role: "user", content: prompt } ], response_format: { type: "json_object" }
         });
-
         let text = response.choices[0].message.content.trim();
-
-        // Strip markdown code block markers if present
-        if (text.startsWith("```json")) {
-            text = text.substring(7);
-        }
-        if (text.startsWith("```")) {
-            text = text.substring(3);
-        }
-        if (text.endsWith("```")) {
-            text = text.substring(0, text.length - 3);
-        }
-        text = text.trim();
-
-        return JSON.parse(text);
+        if (text.startsWith("\`\`\`json")) text = text.substring(7);
+        if (text.startsWith("\`\`\`")) text = text.substring(3);
+        if (text.endsWith("\`\`\`")) text = text.substring(0, text.length - 3);
+        return JSON.parse(text.trim());
     } catch (error) {
-        console.error("[Groq] analyzeAsset error:", error.message);
         const isVideo = fileType.startsWith("video/");
-        return {
-            tags: isVideo ? ["Demo", "Clip", "Video"] : ["Image", "Visual", "Asset"],
-            summary: `This is an uploaded file named ${fileName}. Sahil AI detects standard parameters.`,
-            colors: ["#06B6D4", "#7C3AED"],
-            resolution: isVideo ? "1920 x 1080 (1080p)" : "3840 x 2160 (4K)"
-        };
+        return { tags: ["Asset"], summary: `Analyzed ${fileName}`, colors: ["#06B6D4", "#7C3AED"], resolution: isVideo ? "1080p" : "4K" };
     }
 }
 
-
-// Embeddings Generation for Pinecone Long-Term Memory
 async function generateVector(content) {
     try {
-        const text = typeof content === "string"
-            ? content
-            : (Array.isArray(content) ? content.map(c =>
-                Array.isArray(c.parts) ? c.parts.map(p => p.text).join(" ") : (c.content || "")
-              ).join(" ") : "");
-
-        const output = await hf.featureExtraction({
-            model: "sentence-transformers/all-mpnet-base-v2",
-            inputs: text
-        });
-
-        const vector = Array.isArray(output[0]) ? output[0] : output;
-        return vector;
+        const text = typeof content === "string" ? content : (Array.isArray(content) ? content.map(c => Array.isArray(c.parts) ? c.parts.map(p => p.text).join(" ") : (c.content || "")).join(" ") : "");
+        const output = await hf.featureExtraction({ model: "sentence-transformers/all-mpnet-base-v2", inputs: text });
+        return Array.isArray(output[0]) ? output[0] : output;
     } catch (error) {
-        console.error("[HF Inference] Error generating vector:", error.message);
         return null;
     }
 }
 
-module.exports = {
-    generateResponse,
-    generateVector,
-    analyzeAsset
-};
+module.exports = { generateResponse, generateVector, analyzeAsset };

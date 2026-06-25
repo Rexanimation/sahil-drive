@@ -8,5 +8,19 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, '../Backend/public'),
     emptyOutDir: true,
-  }
+  },
+  server: {
+    port: 5173,
+    strictPort: true,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/socket.io': {
+        target: 'http://localhost:3000',
+        ws: true,
+      },
+    },
+  },
 })

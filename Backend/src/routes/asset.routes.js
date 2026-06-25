@@ -17,6 +17,9 @@ router.get('/', authMiddleware.authUser, assetController.getAssets);
 /* GET /api/assets/storage-summary */
 router.get('/storage-summary', authMiddleware.authUser, assetController.getStorageSummary);
 
+/* GET /api/assets/analytics */
+router.get('/analytics', authMiddleware.authUser, assetController.getAnalytics);
+
 /* PUT /api/assets/:id/favorite */
 router.put('/:id/favorite', authMiddleware.authUser, assetController.toggleFavorite);
 
