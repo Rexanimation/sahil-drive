@@ -1372,13 +1372,12 @@ const Home = () => {
                 {activeAsset.type && activeAsset.type.startsWith('video/') ? (
                   <video
                     src={getFileUrl(activeAsset.url)}
-                    crossOrigin="use-credentials"
                     controls
                     className="detail-video-player"
                     poster="https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800"
                   />
                 ) : (
-                  <img src={getFileUrl(activeAsset.url)} crossOrigin="use-credentials" alt={activeAsset.name} className="detail-media" />
+                  <img src={getFileUrl(activeAsset.url)} alt={activeAsset.name} className="detail-media" />
                 )}
               </div>
 
@@ -1579,7 +1578,7 @@ const Home = () => {
                           >
                             <div className="suggested-card-thumbnail-container">
                               {isImage ? (
-                                <img src={getFileUrl(file.url)} crossOrigin="use-credentials" alt={file.name} className="suggested-card-thumbnail" />
+                                <img src={getFileUrl(file.url)} alt={file.name} className="suggested-card-thumbnail" />
                               ) : isVideo ? (
                                 <>
                                   <img src="https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800" alt={file.name} className="suggested-card-thumbnail" />
@@ -1944,7 +1943,7 @@ const Home = () => {
                                       <span className="video-duration">Video</span>
                                     </>
                                   ) : file.type && file.type.startsWith('image/') ? (
-                                    <img src={getFileUrl(file.url)} crossOrigin="use-credentials" alt={file.name} className="file-thumbnail" />
+                                    <img src={getFileUrl(file.url)} alt={file.name} className="file-thumbnail" />
                                   ) : file.type === 'application/pdf' ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-secondary)' }}>
                                       <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="#e53935" strokeWidth="1.5">
