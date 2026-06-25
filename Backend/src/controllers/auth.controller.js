@@ -1,7 +1,8 @@
 const authService = require('../services/auth.service');
 const { setAuthCookies, clearAuthCookies } = require('../services/cookie.service');
 const { getStorageForUser } = require('../services/mega.service');
-const assetModel = require('../models/asset.model');
+const syncService = require('../services/sync.service');
+const assetRepository = require('../repositories/asset.repository');
 
 /**
  * Controller: Registers a new user
@@ -39,6 +40,9 @@ async function loginUser(req, res) {
 
         setAuthCookies(res, accessToken, refreshToken);
 
+        // Fire and forget background sync
+        syncService.syncAccount(user._id).catch(err => console.error("Login Sync Error:", err));
+
         res.status(200).json({
             message: "User logged in successfully",
             user: {
@@ -67,6 +71,9 @@ async function googleLoginUser(req, res) {
         const { user, accessToken, refreshToken } = await authService.googleLogin(credential);
 
         setAuthCookies(res, accessToken, refreshToken);
+
+        // Fire and forget background sync
+        syncService.syncAccount(user._id).catch(err => console.error("Google Login Sync Error:", err));
 
         res.status(200).json({
             message: "Logged in with Google successfully",
@@ -122,11 +129,7 @@ async function getMe(req, res) {
         }
 
         // Auto-correct storage desync issues
-        const storageResult = await assetModel.aggregate([
-            { $match: { userId: user._id, isFolder: false } },
-            { $group: { _id: null, totalBytes: { $sum: "$size" } } }
-        ]);
-        const actualStorageUsed = storageResult.length > 0 ? storageResult[0].totalBytes : 0;
+        const actualStorageUsed = await assetRepository.calculateTotalSize(user._id);
         
         if (user.usedStorage !== actualStorageUsed) {
             user.usedStorage = actualStorageUsed;

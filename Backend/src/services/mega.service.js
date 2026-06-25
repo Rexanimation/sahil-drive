@@ -1,7 +1,5 @@
 const { Storage } = require('megajs');
 const { decrypt } = require('../utils/crypto');
-const assetModel = require('../models/asset.model');
-const userModel = require('../models/user.model');
 
 const userStorageInstances = {};
 const initializingPromises = {};
@@ -134,46 +132,11 @@ async function validateCredentials(email, password) {
 }
 
 /**
- * Synchronize deletions: if a file is deleted from Mega directly, remove it from MongoDB
+ * Get all files from MEGA directly without DB
  */
-async function syncDeletions(user) {
-    try {
-        const storage = await getStorageForUser(user);
-        const megaHandles = Object.keys(storage.files);
-        
-        const dbAssets = await assetModel.find({ 
-            userId: user._id, 
-            isFolder: false, 
-            megaHandle: { $exists: true, $ne: null } 
-        });
-        
-        let deletedSize = 0;
-        
-        for (const asset of dbAssets) {
-            if (!megaHandles.includes(asset.megaHandle)) {
-                // MEGA's internal file tree can take a few seconds to update after an upload.
-                // To avoid deleting newly uploaded files, we ensure the file is at least 10 mins old.
-                const ageInMs = Date.now() - new Date(asset.createdAt).getTime();
-                if (ageInMs < 10 * 60 * 1000) {
-                    continue;
-                }
-
-                console.log(`[MEGA Sync] File ${asset.name} was deleted directly from MEGA. Removing from DB.`);
-                deletedSize += (asset.size || 0);
-                await assetModel.findByIdAndDelete(asset._id);
-            }
-        }
-        
-        if (deletedSize > 0) {
-            const userRecord = await userModel.findById(user._id);
-            if (userRecord) {
-                userRecord.usedStorage = Math.max(0, userRecord.usedStorage - deletedSize);
-                await userRecord.save();
-            }
-        }
-    } catch (err) {
-        console.error("[MEGA Sync] Failed to sync deletions:", err.message);
-    }
+async function getAllMegaFiles(user) {
+    const storage = await getStorageForUser(user);
+    return storage.files;
 }
 
 /**
@@ -194,6 +157,6 @@ module.exports = {
     deleteFile,
     getFileStream,
     validateCredentials,
-    syncDeletions,
+    getAllMegaFiles,
     disconnectUser
 };

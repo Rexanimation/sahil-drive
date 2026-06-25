@@ -23,6 +23,9 @@ router.get('/analytics', authMiddleware.authUser, assetController.getAnalytics);
 /* PUT /api/assets/:id/favorite */
 router.put('/:id/favorite', authMiddleware.authUser, assetController.toggleFavorite);
 
+/* PUT /api/assets/move */
+router.put('/move', authMiddleware.authUser, assetController.moveAssets);
+
 /* DELETE /api/assets/:id */
 router.delete('/:id', authMiddleware.authUser, assetController.deleteAsset);
 

@@ -1,17 +1,20 @@
-const assetModel = require('../models/asset.model');
-const userModel = require('../models/user.model');
+const assetRepository = require('../repositories/asset.repository');
+const userRepository = require('../repositories/user.repository');
 
 async function getStorageAnalytics(userId) {
-    const user = await userModel.findById(userId);
+    const user = await userRepository.findById(userId);
     if (!user) {
         throw new Error("User not found");
     }
 
-    const assets = await assetModel.find({ userId, isFolder: false, isDeleted: false }).lean();
-    const trashAssets = await assetModel.find({ userId, isDeleted: true }).lean();
-    const favoriteAssets = await assetModel.find({ userId, isFavorite: true, isDeleted: false }).lean();
+    const assets = await assetRepository.findActiveAssets(userId);
+    const trashAssets = await assetRepository.findDeletedAssets(userId);
+    const favoriteAssets = await assetRepository.findByUserId(userId, { isFavorite: true, isDeleted: false });
 
-    const usedStorage = assets.reduce((acc, curr) => acc + (curr.size || 0), 0);
+    // Since findActiveAssets might include folders (which have size 0 or undefined usually, but to be exact we filter):
+    const fileAssets = assets.filter(a => !a.isFolder);
+
+    const usedStorage = fileAssets.reduce((acc, curr) => acc + (curr.size || 0), 0);
     const trashSize = trashAssets.reduce((acc, curr) => acc + (curr.size || 0), 0);
     
     // Categorize files
@@ -25,7 +28,7 @@ async function getStorageAnalytics(userId) {
         Other: { count: 0, size: 0 }
     };
 
-    assets.forEach(asset => {
+    fileAssets.forEach(asset => {
         const mime = asset.mimeType || "";
         const size = asset.size || 0;
         
@@ -46,12 +49,12 @@ async function getStorageAnalytics(userId) {
         }
     });
 
-    const largestFiles = [...assets]
+    const largestFiles = [...fileAssets]
         .sort((a, b) => (b.size || 0) - (a.size || 0))
         .slice(0, 5)
         .map(f => ({ name: f.name, size: f.size, type: f.mimeType }));
 
-    const recentUploads = [...assets]
+    const recentUploads = [...fileAssets]
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
         .slice(0, 5)
         .map(f => ({ name: f.name, size: f.size, date: f.createdAt }));
@@ -60,7 +63,7 @@ async function getStorageAnalytics(userId) {
     const weeklyUploads = Array(7).fill(0);
     const now = new Date();
     
-    assets.forEach(asset => {
+    fileAssets.forEach(asset => {
         const assetDate = new Date(asset.createdAt);
         const diffTime = now.getTime() - assetDate.getTime();
         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));

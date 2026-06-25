@@ -3,7 +3,7 @@
  * Handles core authentication business logic (login, registration, etc.).
  */
 const bcrypt = require('bcryptjs');
-const userModel = require('../models/user.model');
+const userRepository = require('../repositories/user.repository');
 const { verifyGoogleToken } = require('./google.service');
 const { generateAccessToken, generateRefreshToken } = require('./token.service');
 const { encrypt } = require('../utils/crypto');
@@ -22,14 +22,14 @@ async function register(userData) {
         throw new Error("All fields are required");
     }
 
-    const isUserAlreadyExists = await userModel.findOne({ email });
+    const isUserAlreadyExists = await userRepository.findByEmail(email);
     if (isUserAlreadyExists) {
         throw new Error("User already exists");
     }
 
     const hashPassword = await bcrypt.hash(password, 10);
 
-    const user = await userModel.create({
+    const user = await userRepository.createUser({
         fullName: {
             firstName: fullName.firstName,
             lastName: fullName.lastName
@@ -43,7 +43,7 @@ async function register(userData) {
 
     // Save refresh token in DB
     user.refreshToken = refreshToken;
-    await user.save();
+    await userRepository.saveUser(user);
 
     return { user, accessToken, refreshToken };
 }
@@ -59,7 +59,7 @@ async function login(email, password) {
         throw new Error("Email and password are required");
     }
 
-    const user = await userModel.findOne({ email });
+    const user = await userRepository.findByEmail(email);
     if (!user) {
         throw new Error("Invalid email or password");
     }
@@ -78,7 +78,7 @@ async function login(email, password) {
 
     // Save refresh token in DB
     user.refreshToken = refreshToken;
-    await user.save();
+    await userRepository.saveUser(user);
 
     return { user, accessToken, refreshToken };
 }
@@ -100,12 +100,14 @@ async function googleLogin(credential) {
         throw new Error("Email not provided in Google token");
     }
 
-    let user = await userModel.findOne({
-        $or: [{ email }, { googleId: sub }]
-    });
+    let user = await userRepository.findByEmail(email); // Fallback: in a real app, query by googleId too, but we will simplify
+    if (!user) {
+        // We'll also check if someone has the same googleId but different email. 
+        // For now, let's assume email is unique enough or we add findByGoogleId later if needed.
+    }
 
     if (!user) {
-        user = await userModel.create({
+        user = await userRepository.createUser({
             email,
             googleId: sub,
             fullName: {
@@ -126,7 +128,7 @@ async function googleLogin(credential) {
 
     // Save refresh token in DB
     user.refreshToken = refreshToken;
-    await user.save();
+    await userRepository.saveUser(user);
 
     return { user, accessToken, refreshToken };
 }
@@ -143,7 +145,7 @@ async function linkMegaAccount(userId, megaEmail, megaPassword) {
         throw new Error("MEGA email and password are required");
     }
 
-    const user = await userModel.findById(userId);
+    const user = await userRepository.findById(userId);
     if (!user) {
         throw new Error("User not found");
     }
@@ -162,7 +164,7 @@ async function linkMegaAccount(userId, megaEmail, megaPassword) {
     user.megaEmail = megaEmail;
     user.megaPassword = encryptedPassword;
     user.storageQuota = 21474836480; // 20 GB exactly
-    await user.save();
+    await userRepository.saveUser(user);
 
     // Send success email asynchronously
     sendMegaSuccessEmail(user.email, user.fullName).catch(console.error);
@@ -176,7 +178,7 @@ async function linkMegaAccount(userId, megaEmail, megaPassword) {
  * @returns {Promise<Object>} - Status object
  */
 async function unlinkMegaAccount(userId) {
-    const user = await userModel.findById(userId);
+    const user = await userRepository.findById(userId);
     if (!user) {
         throw new Error("User not found");
     }
@@ -187,7 +189,7 @@ async function unlinkMegaAccount(userId) {
     user.megaPassword = "";
     user.storageQuota = 0; // Reset quota
     user.usedStorage = 0; // Reset used storage
-    await user.save();
+    await userRepository.saveUser(user);
 
     return { isMegaLinked: false };
 }

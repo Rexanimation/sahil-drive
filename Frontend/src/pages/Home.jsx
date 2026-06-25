@@ -6,6 +6,8 @@ import axios from 'axios';
 import { API_URL } from '../config';
 import '../styles/Dashboard.css';
 import AnalyticsEngine from '../components/AnalyticsEngine';
+import FileViewer from '../components/FileViewer';
+import MoveModal from '../components/MoveModal';
 
 import {
   setFiles,
@@ -124,6 +126,10 @@ const Home = () => {
   // Folder Creation Modal
   const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
   const [folderNameInput, setFolderNameInput] = useState('');
+
+  // Multi-select & Move
+  const [selectedAssets, setSelectedAssets] = useState([]);
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
 
   // Share Settings Modal
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -382,6 +388,97 @@ const Home = () => {
     dispatch(setActiveAssetContext(null));
   };
 
+  // ─── Multi-Selection & Bulk Move Logic ─────────────────────────────────────
+  const toggleSelection = (assetId, e) => {
+    e.stopPropagation();
+    setSelectedAssets(prev => {
+      if (prev.includes(assetId)) {
+        return prev.filter(id => id !== assetId);
+      }
+      return [...prev, assetId];
+    });
+  };
+
+  const handleBulkMove = async (targetFolderId) => {
+    try {
+      await axios.put(`${API_URL}/api/assets/move`, {
+        assetIds: selectedAssets,
+        targetFolderId
+      }, { withCredentials: true });
+      
+      setSelectedAssets([]);
+      setIsMoveModalOpen(false);
+      // Refresh assets
+      fetchAssets(activeTab, searchQuery, currentFolderId);
+    } catch (err) {
+      console.error("Bulk move failed:", err);
+      alert(err.response?.data?.message || "Failed to move assets");
+    }
+  };
+
+
+
+  // ─── Drag and Drop Logic for Folders ───────────────────────────────────────
+  const handleDragStart = (e, asset) => {
+    // If the dragged asset is part of the selection, drag all selected assets.
+    // Otherwise, just drag this specific asset.
+    let dragPayload = [];
+    if (selectedAssets.includes(asset._id)) {
+      dragPayload = selectedAssets;
+    } else {
+      dragPayload = [asset._id];
+      // Automatically select it so visual styling matches the drag payload
+      if (!selectedAssets.includes(asset._id)) {
+        setSelectedAssets([...selectedAssets, asset._id]);
+      }
+    }
+    e.dataTransfer.setData('text/plain', JSON.stringify(dragPayload));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOverFolder = (e) => {
+    // Prevent default to allow dropping
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.classList.add('drag-over');
+  };
+
+  const handleDragLeaveFolder = (e) => {
+    e.currentTarget.classList.remove('drag-over');
+  };
+
+  const handleDropOnFolder = async (e, targetFolderId) => {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+    
+    try {
+      const data = e.dataTransfer.getData('text/plain');
+      if (!data) return;
+      const assetIdsToMove = JSON.parse(data);
+
+      // Prevent moving a folder into itself
+      if (assetIdsToMove.includes(targetFolderId)) {
+        alert("Cannot move a folder into itself!");
+        return;
+      }
+
+      await axios.put(`${API_URL}/api/assets/move`, {
+        assetIds: assetIdsToMove,
+        targetFolderId
+      }, { withCredentials: true });
+      
+      setSelectedAssets([]);
+      // Refresh assets
+      fetchAssets(activeTab, searchQuery, currentFolderId);
+    } catch (err) {
+      console.error("Drag and drop move failed:", err);
+      // alert only if it's not a parse error (e.g., dropping external files)
+      if (err.response) {
+        alert(err.response?.data?.message || "Failed to move assets");
+      }
+    }
+  };
+
   // ─── Create New Folder ─────────────────────────────────────────────────────
   const handleCreateFolder = async (e) => {
     e.preventDefault();
@@ -407,7 +504,7 @@ const Home = () => {
     fileInputRef.current?.click();
   };
 
-  const uploadSingleFile = async (file) => {
+  const uploadSingleFile = async (file, isBulk = false) => {
     if (!file) return;
 
     const trackingId = Math.random().toString(36).substring(7);
@@ -452,24 +549,28 @@ const Home = () => {
         // Remove from upload queue
         setActiveUploads(prev => prev.filter(up => up.id !== trackingId));
 
-        // Start progressive AI analysis overlay simulation
-        dispatch(setActiveAssetContext(newAsset));
-        dispatch(setAnalysisProgress(0));
-        dispatch(setAnalysisStatus('analyzing'));
-        
-        let progress = 0;
-        const interval = setInterval(() => {
-          progress += 5;
-          if (progress >= 100) {
-            clearInterval(interval);
-            dispatch(setAnalysisProgress(100));
-            dispatch(setAnalysisStatus('completed'));
-            setIsAiOpen(true);
-            fetchStorageSummary();
-          } else {
-            dispatch(setAnalysisProgress(progress));
-          }
-        }, 100);
+        // Start progressive AI analysis overlay simulation ONLY if single file
+        if (!isBulk) {
+          dispatch(setActiveAssetContext(newAsset));
+          dispatch(setAnalysisProgress(0));
+          dispatch(setAnalysisStatus('analyzing'));
+          
+          let progress = 0;
+          const interval = setInterval(() => {
+            progress += 5;
+            if (progress >= 100) {
+              clearInterval(interval);
+              dispatch(setAnalysisProgress(100));
+              dispatch(setAnalysisStatus('completed'));
+              setIsAiOpen(true);
+              fetchStorageSummary();
+            } else {
+              dispatch(setAnalysisProgress(progress));
+            }
+          }, 100);
+        } else {
+          fetchStorageSummary();
+        }
 
       } else {
         // Chunk Ingestion Pipeline (5MB chunks)
@@ -525,31 +626,35 @@ const Home = () => {
         // Remove from upload queue
         setActiveUploads(prev => prev.filter(up => up.id !== trackingId));
 
-        // Start progressive AI analysis overlay simulation
-        dispatch(setActiveAssetContext(newAsset));
-        dispatch(setAnalysisProgress(0));
-        dispatch(setAnalysisStatus('analyzing'));
+        // Start progressive AI analysis overlay simulation ONLY if single file
+        if (!isBulk) {
+          dispatch(setActiveAssetContext(newAsset));
+          dispatch(setAnalysisProgress(0));
+          dispatch(setAnalysisStatus('analyzing'));
 
-        let progress = 0;
-        const interval = setInterval(() => {
-          progress += 5;
-          if (progress >= 100) {
-            clearInterval(interval);
-            dispatch(setAnalysisProgress(100));
-            dispatch(setAnalysisStatus('completed'));
-            setIsAiOpen(true);
-            fetchStorageSummary();
-          } else {
-            dispatch(setAnalysisProgress(progress));
-          }
-        }, 100);
+          let progress = 0;
+          const interval = setInterval(() => {
+            progress += 5;
+            if (progress >= 100) {
+              clearInterval(interval);
+              dispatch(setAnalysisProgress(100));
+              dispatch(setAnalysisStatus('completed'));
+              setIsAiOpen(true);
+              fetchStorageSummary();
+            } else {
+              dispatch(setAnalysisProgress(progress));
+            }
+          }, 100);
+        } else {
+          fetchStorageSummary();
+        }
       }
     } catch (err) {
       console.error("Upload process failed:", err);
       setActiveUploads(prev => prev.map(up => up.id === trackingId ? { ...up, status: 'failed' } : up));
       alert(`Upload failed for ${file.name}`);
     } finally {
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      // Input clearing handled in processUploadQueue
     }
   };
 
@@ -725,7 +830,7 @@ const Home = () => {
 
   // ─── Dynamic URL Parser ────────────────────────────────────────────────────
   const getFileUrl = (url) => {
-    if (url && url.startsWith('/uploads/')) {
+    if (url && url.startsWith('/')) {
       return `${API_URL}${url}`;
     }
     return url;
@@ -802,11 +907,19 @@ const Home = () => {
     };
   };
 
-  const handleFileUpload = (e) => {
-    const filesList = e.target.files;
-    if (filesList && filesList.length > 0) {
-      uploadSingleFile(filesList[0]);
+  const processUploadQueue = (filesList) => {
+    if (!filesList || filesList.length === 0) return;
+    const isBulk = filesList.length > 1;
+    Array.from(filesList).forEach(file => {
+      uploadSingleFile(file, isBulk);
+    });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
+  };
+
+  const handleFileUpload = (e) => {
+    processUploadQueue(e.target.files);
   };
 
   const handleDrag = (e) => {
@@ -823,9 +936,7 @@ const Home = () => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      uploadSingleFile(e.dataTransfer.files[0]);
-    }
+    processUploadQueue(e.dataTransfer.files);
   };
 
   const cleanTag = (tag) => {
@@ -926,6 +1037,7 @@ const Home = () => {
             <input
               type="file"
               ref={fileInputRef}
+              multiple
               style={{ display: 'none' }}
               onChange={handleFileUpload}
             />
@@ -1031,8 +1143,47 @@ const Home = () => {
       {/* ───────────────────────────────────────────────────────────────────────
          2. Main Canvas Explorer (Center Workspace)
          ─────────────────────────────────────────────────────────────────────── */}
-      <main className="main-canvas" role="main">
+      <main className="main-canvas" role="main" style={{ position: 'relative' }}>
         
+        {/* Bulk Selection Sticky Bar */}
+        {selectedAssets.length > 0 && (
+          <div style={{
+            position: 'absolute',
+            top: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'var(--brand-primary)',
+            color: '#fff',
+            padding: '10px 20px',
+            borderRadius: '30px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '15px',
+            zIndex: 100,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            fontWeight: '500'
+          }}>
+            <span>{selectedAssets.length} item{selectedAssets.length !== 1 ? 's' : ''} selected</span>
+            <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.3)' }}></div>
+            <button 
+              onClick={() => setIsMoveModalOpen(true)}
+              style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px' }}
+            >
+              <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              Move
+            </button>
+            <button 
+              onClick={() => setSelectedAssets([])}
+              style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.8)', cursor: 'pointer', marginLeft: '10px' }}
+              title="Clear Selection"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Top Header Bar */}
         <header className="top-bar">
           <div style={{ display: 'flex', alignItems: 'center', flex: 1, gap: '10px', minWidth: 0 }}>
@@ -1199,12 +1350,13 @@ const Home = () => {
                 {activeAsset.type && activeAsset.type.startsWith('video/') ? (
                   <video
                     src={getFileUrl(activeAsset.url)}
+                    crossOrigin="use-credentials"
                     controls
                     className="detail-video-player"
                     poster="https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800"
                   />
                 ) : (
-                  <img src={getFileUrl(activeAsset.url)} alt={activeAsset.name} className="detail-media" />
+                  <img src={getFileUrl(activeAsset.url)} crossOrigin="use-credentials" alt={activeAsset.name} className="detail-media" />
                 )}
               </div>
 
@@ -1405,7 +1557,7 @@ const Home = () => {
                           >
                             <div className="suggested-card-thumbnail-container">
                               {isImage ? (
-                                <img src={getFileUrl(file.url)} alt={file.name} className="suggested-card-thumbnail" />
+                                <img src={getFileUrl(file.url)} crossOrigin="use-credentials" alt={file.name} className="suggested-card-thumbnail" />
                               ) : isVideo ? (
                                 <>
                                   <img src="https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800" alt={file.name} className="suggested-card-thumbnail" />
@@ -1679,10 +1831,24 @@ const Home = () => {
                           <div className="folders-grid">
                             {folders.map(folder => (
                               <div 
-                                className="folder-card" 
+                                className={`folder-card ${selectedAssets.includes(folder._id) ? 'selected' : ''}`}
                                 key={folder._id}
                                 onDoubleClick={() => navigateToFolder(folder._id, folder.name)}
+                                style={{ position: 'relative', border: selectedAssets.includes(folder._id) ? '2px solid var(--brand-primary)' : '' }}
+                                draggable="true"
+                                onDragStart={(e) => handleDragStart(e, folder)}
+                                onDragOver={handleDragOverFolder}
+                                onDragLeave={handleDragLeaveFolder}
+                                onDrop={(e) => handleDropOnFolder(e, folder._id)}
                               >
+                                <input 
+                                  type="checkbox" 
+                                  className="bulk-select-checkbox"
+                                  checked={selectedAssets.includes(folder._id)}
+                                  onChange={(e) => toggleSelection(folder._id, e)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 10, transform: 'scale(1.2)', cursor: 'pointer' }}
+                                />
                                 <div className="folder-icon">
                                   <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24">
                                     <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
@@ -1728,7 +1894,23 @@ const Home = () => {
                           <h4 className="folders-section-title">Files</h4>
                           <div className="files-grid">
                             {items.map(file => (
-                              <article className="file-card" key={file._id} aria-label={`File card for ${file.name}`} onClick={() => setPreviewAsset(file)}>
+                              <article 
+                                className={`file-card ${selectedAssets.includes(file._id) ? 'selected' : ''}`}
+                                key={file._id} 
+                                aria-label={`File card for ${file.name}`} 
+                                onClick={() => setPreviewAsset(file)}
+                                style={{ position: 'relative', border: selectedAssets.includes(file._id) ? '2px solid var(--brand-primary)' : '' }}
+                                draggable="true"
+                                onDragStart={(e) => handleDragStart(e, file)}
+                              >
+                                <input 
+                                  type="checkbox" 
+                                  className="bulk-select-checkbox"
+                                  checked={selectedAssets.includes(file._id)}
+                                  onChange={(e) => toggleSelection(file._id, e)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  style={{ position: 'absolute', top: '10px', left: '10px', zIndex: 10, transform: 'scale(1.2)', cursor: 'pointer' }}
+                                />
                                 <div className="file-thumbnail-container">
                                   {file.type && file.type.startsWith('video/') ? (
                                     <>
@@ -1740,7 +1922,7 @@ const Home = () => {
                                       <span className="video-duration">Video</span>
                                     </>
                                   ) : file.type && file.type.startsWith('image/') ? (
-                                    <img src={getFileUrl(file.url)} alt={file.name} className="file-thumbnail" />
+                                    <img src={getFileUrl(file.url)} crossOrigin="use-credentials" alt={file.name} className="file-thumbnail" />
                                   ) : file.type === 'application/pdf' ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-secondary)' }}>
                                       <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="#e53935" strokeWidth="1.5">
@@ -2225,40 +2407,14 @@ const Home = () => {
       )}
 
       {/* ───────────────────────────────────────────────────────────────────────
-         Inline Preview Modal
+         Interactive File Viewer Modal
          ─────────────────────────────────────────────────────────────────────── */}
       {previewAsset && (
-        <div className="modal-overlay" onClick={() => setPreviewAsset(null)} style={{ zIndex: 9999 }}>
-          <div className="modal-card" style={{ width: '80%', maxWidth: '900px', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '80vh' }} onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header" style={{ padding: '1rem', borderBottom: '1px solid var(--glass-border)', background: 'var(--bg-dark)' }}>
-              <h3>{previewAsset.name}</h3>
-              <button className="icon-action-btn" onClick={() => setPreviewAsset(null)}>
-                <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="modal-body" style={{ flex: 1, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
-              {previewAsset.type?.startsWith('video/') ? (
-                <video src={getFileUrl(previewAsset.url)} controls autoPlay style={{ width: '100%', maxHeight: '100%' }} />
-              ) : previewAsset.type?.startsWith('image/') ? (
-                <img src={getFileUrl(previewAsset.url)} alt={previewAsset.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-              ) : previewAsset.type === 'application/pdf' ? (
-                <iframe src={getFileUrl(previewAsset.url)} title={previewAsset.name} width="100%" height="100%" frameBorder="0" />
-              ) : (
-                <div style={{ color: '#fff', textAlign: 'center', padding: '2rem' }}>
-                  <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1" style={{ marginBottom: '1rem' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  <p>Preview not available for this file type.</p>
-                  <a href={getFileUrl(previewAsset.url)} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand-primary)', textDecoration: 'none', display: 'inline-block', marginTop: '1rem' }}>
-                    Download File
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <FileViewer 
+          asset={previewAsset} 
+          onClose={() => setPreviewAsset(null)} 
+          getFileUrl={getFileUrl} 
+        />
       )}
 
       {/* ───────────────────────────────────────────────────────────────────────
@@ -2410,6 +2566,18 @@ const Home = () => {
             ))}
           </div>
         </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────────────────
+         Move Modal
+         ─────────────────────────────────────────────────────────────────────── */}
+      {isMoveModalOpen && (
+        <MoveModal 
+          folders={files.filter(f => f.isFolder)}
+          currentFolderId={currentFolderId}
+          onClose={() => setIsMoveModalOpen(false)}
+          onMove={handleBulkMove}
+        />
       )}
 
     </div>

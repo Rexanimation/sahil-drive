@@ -112,10 +112,11 @@ async function getAssets(req, res) {
 
         const assets = await assetModel.find(query).sort({ createdAt: -1 });
 
-        // Trigger an asynchronous sync with MEGA to detect any direct deletions from the drive.
-        // We do not await this to avoid slowing down the response, it will update DB in background.
+        // Trigger an asynchronous sync with MEGA to detect any discrepancies.
+        // We do not await this to avoid slowing down the response.
         if (user.megaEmail && user.megaPassword) {
-            megaService.syncDeletions(user).catch(e => console.error("Sync failed:", e));
+            const syncService = require('../services/sync.service');
+            syncService.syncAccount(user._id).catch(e => console.error("Sync failed:", e));
         }
 
         res.status(200).json({
@@ -210,6 +211,42 @@ async function deleteAsset(req, res) {
         });
     } catch (err) {
         console.error("Delete Asset error:", err);
+        res.status(500).json({ message: "Internal server error" });
+    }
+}
+
+async function moveAssets(req, res) {
+    try {
+        const { assetIds, targetFolderId } = req.body;
+        const user = req.user;
+
+        if (!assetIds || !Array.isArray(assetIds) || assetIds.length === 0) {
+            return res.status(400).json({ message: "No assets selected to move" });
+        }
+
+        // Validate target folder if it's not root
+        const newParentId = (targetFolderId && targetFolderId !== 'root' && targetFolderId !== 'null' && targetFolderId !== 'undefined') ? targetFolderId : null;
+        
+        if (newParentId) {
+            const targetFolder = await assetModel.findOne({ _id: newParentId, userId: user.id, isFolder: true });
+            if (!targetFolder) {
+                return res.status(404).json({ message: "Target folder not found" });
+            }
+        }
+
+        // Prevent moving a folder into itself or its own children
+        // For simplicity in MVP, we just run the update. A full check would require recursively checking parent chain.
+        // Update all selected assets
+        await assetModel.updateMany(
+            { _id: { $in: assetIds }, userId: user.id },
+            { $set: { parentFolderId: newParentId } }
+        );
+
+        res.status(200).json({
+            message: "Assets moved successfully"
+        });
+    } catch (err) {
+        console.error("Move Assets error:", err);
         res.status(500).json({ message: "Internal server error" });
     }
 }
@@ -453,5 +490,6 @@ module.exports = {
     getAnalytics,
     chatAsset,
     createFolder,
-    streamAsset
+    streamAsset,
+    moveAssets
 };
